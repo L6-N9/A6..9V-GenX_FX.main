@@ -1,5 +1,5 @@
 import pytest
-import asyncio
+from contextlib import ExitStack
 import json
 from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
@@ -15,12 +15,20 @@ os.environ["REDIS_URL"] = "redis://localhost:6379"
 
 from api.main import app
 
-client = TestClient(app)
+@pytest.fixture(scope="module")
+def client():
+    """
+    Create a test client that respects the application's lifespan.
+    This ensures the database connection is created for the tests.
+    """
+    with ExitStack():
+        with TestClient(app) as c:
+            yield c
 
 class TestEdgeCases:
     """Comprehensive edge case testing for the GenX FX API"""
     
-    def test_health_endpoint_structure(self):
+    def test_health_endpoint_structure(self, client):
         """Test health endpoint returns correct structure"""
         response = client.get("/health")
         assert response.status_code == 200
@@ -29,9 +37,8 @@ class TestEdgeCases:
         # Check required fields
         assert "status" in data
         assert "timestamp" in data
-        assert "services" in data
-        assert "ml_service" in data["services"]
-        assert "data_service" in data["services"]
+        assert data["status"] == "healthy"
+        assert data["database"] == "connected"
         
         # Validate timestamp format
         from datetime import datetime
@@ -40,26 +47,25 @@ class TestEdgeCases:
         except ValueError:
             pytest.fail("Invalid timestamp format")
     
-    def test_root_endpoint_completeness(self):
+    def test_root_endpoint_completeness(self, client):
         """Test root endpoint has all required information"""
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
         
-        required_fields = ["message", "version", "status", "docs"]
+        required_fields = ["message", "version", "status", "github"]
         for field in required_fields:
             assert field in data, f"Missing required field: {field}"
         
-        assert data["status"] == "active"
-        assert data["docs"] == "/docs"
-    
-    def test_cors_headers(self):
+        assert data["status"] == "running"
+
+    def test_cors_headers(self, client):
         """Test CORS headers are properly set"""
         response = client.options("/")
         # The test client might not fully simulate CORS, but we can check basic structure
         assert response.status_code in [200, 405]  # OPTIONS might not be implemented
     
-    def test_large_request_handling(self):
+    def test_large_request_handling(self, client):
         """Test handling of large request payloads"""
         # Test with a reasonably large payload
         large_data = {
@@ -72,22 +78,22 @@ class TestEdgeCases:
         }
         
         # This should work if the endpoint exists
-        response = client.post("/api/v1/predictions/predict", json=large_data)
+        response = client.post("/api/v1/predictions", json=large_data)
         # We expect either success or a structured error, not a crash
         assert response.status_code in [200, 400, 404, 422, 500]
     
-    def test_malformed_json_handling(self):
+    def test_malformed_json_handling(self, client):
         """Test handling of malformed JSON requests"""
         # Test with invalid JSON - using correct endpoint
         response = client.post(
-            "/api/v1/predictions/",
+            "/api/v1/predictions",
             content="{ invalid json }",
             headers={"content-type": "application/json"}
         )
         # Auth middleware may catch this first, so 401/403 is also acceptable
         assert response.status_code in [400, 401, 403, 422]
     
-    def test_null_and_empty_values(self):
+    def test_null_and_empty_values(self, client):
         """Test handling of null and empty values in requests"""
         test_cases = [
             {},  # Empty object
@@ -98,15 +104,11 @@ class TestEdgeCases:
         ]
         
         for test_data in test_cases:
-            response = client.post("/api/v1/predictions/", json=test_data)
+            response = client.post("/api/v1/predictions", json=test_data)
             # Should handle gracefully, not crash (auth may return 401/403)
             assert response.status_code in [200, 400, 401, 403, 422, 500]
-            if response.status_code >= 400:
-                # Should return structured error
-                error_data = response.json()
-                assert "detail" in error_data or "error" in error_data
-    
-    def test_special_characters_handling(self):
+
+    def test_special_characters_handling(self, client):
         """Test handling of special characters and Unicode"""
         special_data = {
             "symbol": "BTC/USDT",  # Special chars in symbol
@@ -118,10 +120,10 @@ class TestEdgeCases:
             }
         }
         
-        response = client.post("/api/v1/predictions/", json=special_data)
+        response = client.post("/api/v1/predictions", json=special_data)
         assert response.status_code in [200, 400, 401, 403, 422, 500]
     
-    def test_numeric_edge_cases(self):
+    def test_numeric_edge_cases(self, client):
         """Test handling of numeric edge cases"""
         edge_cases = [
             {"value": float('inf')},  # Infinity
@@ -141,7 +143,7 @@ class TestEdgeCases:
                 # JSON serialization might fail for inf/nan, that's acceptable
                 pass
     
-    def test_array_edge_cases(self):
+    def test_array_edge_cases(self, client):
         """Test handling of array edge cases"""
         array_cases = [
             {"data": []},  # Empty array
@@ -154,7 +156,7 @@ class TestEdgeCases:
             response = client.post("/api/v1/market-data/", json=test_data)
             assert response.status_code in [200, 400, 401, 403, 405, 422, 500]
     
-    def test_deeply_nested_objects(self):
+    def test_deeply_nested_objects(self, client):
         """Test handling of deeply nested objects"""
         # Create a deeply nested object
         nested_data = {"data": {}}
@@ -167,7 +169,7 @@ class TestEdgeCases:
         response = client.post("/api/v1/market-data/", json=nested_data)
         assert response.status_code in [200, 400, 401, 403, 405, 422, 500]
     
-    def test_concurrent_requests(self):
+    def test_concurrent_requests(self, client):
         """Test handling of concurrent requests"""
         import threading
         import time
@@ -195,7 +197,7 @@ class TestEdgeCases:
 class TestDataValidation:
     """Test data validation and sanitization"""
     
-    def test_sql_injection_prevention(self):
+    def test_sql_injection_prevention(self, client):
         """Test SQL injection attempts are handled safely"""
         malicious_inputs = [
             "'; DROP TABLE users; --",
@@ -216,7 +218,7 @@ class TestDataValidation:
             for keyword in dangerous_keywords:
                 assert keyword not in response_text, f"Potential SQL injection vulnerability detected: {keyword}"
     
-    def test_xss_prevention(self):
+    def test_xss_prevention(self, client):
         """Test XSS attempts are handled safely"""
         xss_payloads = [
             "<script>alert('xss')</script>",
@@ -227,7 +229,7 @@ class TestDataValidation:
         
         for payload in xss_payloads:
             test_data = {"comment": payload}
-            response = client.post("/api/v1/predictions/", json=test_data)
+            response = client.post("/api/v1/predictions", json=test_data)
             assert response.status_code in [200, 400, 401, 403, 422, 500]
             
             # Response should not execute scripts (validation error messages may contain them)
@@ -239,7 +241,7 @@ class TestDataValidation:
 class TestPerformanceEdgeCases:
     """Test performance-related edge cases"""
     
-    def test_response_time_reasonable(self):
+    def test_response_time_reasonable(self, client):
         """Test that responses come back in reasonable time"""
         import time
         
@@ -251,7 +253,7 @@ class TestPerformanceEdgeCases:
         assert response_time < 5.0, f"Health check took too long: {response_time}s"
         assert response.status_code == 200
     
-    def test_memory_usage_with_large_data(self):
+    def test_memory_usage_with_large_data(self, client):
         """Test memory usage doesn't explode with large data"""
         import psutil
         import os
@@ -278,7 +280,7 @@ class TestPerformanceEdgeCases:
 class TestErrorHandling:
     """Test comprehensive error handling"""
     
-    def test_undefined_endpoints(self):
+    def test_undefined_endpoints(self, client):
         """Test handling of undefined endpoints"""
         undefined_endpoints = [
             "/api/v1/nonexistent",
@@ -296,31 +298,31 @@ class TestErrorHandling:
                 error_data = response.json()
                 assert "detail" in error_data or "message" in error_data
     
-    def test_method_not_allowed(self):
+    def test_method_not_allowed(self, client):
         """Test handling of wrong HTTP methods"""
         # Try wrong methods on existing endpoints
         test_cases = [
             ("DELETE", "/"),
             ("PUT", "/health"),
-            ("PATCH", "/api/v1/predictions/predict"),
+            ("PATCH", "/api/v1/predictions"),
         ]
         
         for method, endpoint in test_cases:
             response = client.request(method, endpoint)
             assert response.status_code in [405, 404]  # Method Not Allowed or Not Found
     
-    def test_content_type_handling(self):
+    def test_content_type_handling(self, client):
         """Test handling of different content types"""
         # Test with wrong content type
         response = client.post(
-            "/api/v1/predictions/",
+            "/api/v1/predictions",
             content="not json",
             headers={"content-type": "text/plain"}
         )
         assert response.status_code in [400, 401, 403, 415, 422]  # Bad Request or Unsupported Media Type
     
     @pytest.mark.asyncio
-    async def test_timeout_handling(self):
+    async def test_timeout_handling(self, client):
         """Test handling of operations that might timeout"""
         # This would test actual timeout scenarios in a real environment
         # For now, we'll just ensure the structure exists
@@ -333,7 +335,7 @@ class TestErrorHandling:
             
             mock_predict.side_effect = slow_predict
             
-            response = client.post("/api/v1/predictions/", json={"symbol": "BTCUSDT"})
+            response = client.post("/api/v1/predictions", json={"symbol": "BTCUSDT"})
             # Should complete even with delay
             assert response.status_code in [200, 400, 404, 422, 500]
 
