@@ -1,12 +1,12 @@
 import pytest
-import asyncio
-from unittest.mock import Mock, patch
+from contextlib import ExitStack
+from unittest.mock import patch
 import os
 
 # Skip tests if FastAPI is not available
 try:
     from fastapi.testclient import TestClient
-    from api.main import app
+    from api.main import app, lifespan
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
@@ -17,10 +17,16 @@ if FASTAPI_AVAILABLE:
     os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
     os.environ["MONGODB_URL"] = "mongodb://localhost:27017/test"
     os.environ["REDIS_URL"] = "redis://localhost:6379"
-    
-    client = TestClient(app)
-else:
-    client = None
+
+@pytest.fixture(scope="module")
+def client():
+    """
+    Create a test client that respects the application's lifespan.
+    This ensures the database connection is created for the tests.
+    """
+    with ExitStack():
+        with TestClient(app) as c:
+            yield c
 
 @pytest.fixture
 def mock_auth():
@@ -29,17 +35,19 @@ def mock_auth():
         mock_user.return_value = {"username": "testuser"}
         yield mock_user
 
-def test_root_endpoint():
+def test_root_endpoint(client):
     """Test root endpoint"""
     response = client.get("/")
     assert response.status_code == 200
     assert "message" in response.json()
 
-def test_health_endpoint():
+def test_health_endpoint(client):
     """Test health endpoint"""
     response = client.get("/health")
     assert response.status_code == 200
-    assert "status" in response.json()
+    data = response.json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "connected"
 
 @pytest.mark.asyncio
 async def test_ml_service():
@@ -81,6 +89,7 @@ async def test_data_service():
 def test_technical_indicators():
     """Test technical indicators"""
     import pandas as pd
+    from typing import Dict
     from core.indicators import TechnicalIndicators
     
     # Create sample data

@@ -1,12 +1,36 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import os
 from datetime import datetime
+
+# This async context manager will handle the application's lifespan events.
+# It ensures that the database connection is established on startup
+# and closed gracefully on shutdown.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Setup: Create a single, reusable database connection.
+    # This is a performance optimization that avoids the overhead of
+    # creating a new connection for every incoming request.
+    # `check_same_thread=False` is required because FastAPI can handle
+    # requests in different threads, and this connection needs to be
+    # accessible to all of them.
+    conn = sqlite3.connect("genxdb_fx.db", check_same_thread=False)
+    app.state.db = conn
+    print("Database connection established.")
+    try:
+        yield
+    finally:
+        # Teardown: Close the connection
+        app.state.db.close()
+        print("Database connection closed.")
+
 app = FastAPI(
     title="GenX-FX Trading Platform API",
     description="Trading platform with ML-powered predictions",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -38,22 +62,20 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """
     Performs a health check on the API and its database connection.
 
-    Attempts to connect to the SQLite database and execute a simple query.
+    Uses the shared database connection to execute a simple query.
 
     Returns:
         dict: A dictionary indicating the health status. 'healthy' if the
               database connection is successful, 'unhealthy' otherwise.
     """
     try:
-        # Test database connection
-        conn = sqlite3.connect("genxdb_fx.db")
-        cursor = conn.cursor()
+        # Test database connection using the shared connection from app state
+        cursor = request.app.state.db.cursor()
         cursor.execute("SELECT 1")
-        conn.close()
 
         return {
             "status": "healthy",
@@ -100,23 +122,22 @@ async def get_predictions():
     }
 
 @app.get("/trading-pairs")
-async def get_trading_pairs():
+async def get_trading_pairs(request: Request):
     """
     Retrieves a list of active trading pairs from the database.
 
-    Connects to the SQLite database and fetches all pairs marked as active.
+    Uses the shared database connection to fetch all pairs marked as active.
 
     Returns:
         dict: A dictionary containing a list of trading pairs or an error message.
     """
     try:
-        conn = sqlite3.connect("genxdb_fx.db")
-        cursor = conn.cursor()
+        # Use the shared database connection
+        cursor = request.app.state.db.cursor()
         cursor.execute(
             "SELECT symbol, base_currency, quote_currency FROM trading_pairs WHERE is_active = 1"
         )
         pairs = cursor.fetchall()
-        conn.close()
 
         return {
             "trading_pairs": [
@@ -132,21 +153,20 @@ async def get_trading_pairs():
         return {"error": str(e)}
 
 @app.get("/users")
-async def get_users():
+async def get_users(request: Request):
     """
     Retrieves a list of users from the database.
 
-    Connects to the SQLite database and fetches user information.
+    Uses the shared database connection to fetch user information.
 
     Returns:
         dict: A dictionary containing a list of users or an error message.
     """
     try:
-        conn = sqlite3.connect("genxdb_fx.db")
-        cursor = conn.cursor()
+        # Use the shared database connection
+        cursor = request.app.state.db.cursor()
         cursor.execute("SELECT username, email, is_active FROM users")
         users = cursor.fetchall()
-        conn.close()
 
         return {
             "users": [
