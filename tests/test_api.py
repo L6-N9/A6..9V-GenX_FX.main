@@ -17,10 +17,6 @@ if FASTAPI_AVAILABLE:
     os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
     os.environ["MONGODB_URL"] = "mongodb://localhost:27017/test"
     os.environ["REDIS_URL"] = "redis://localhost:6379"
-    
-    client = TestClient(app)
-else:
-    client = None
 
 @pytest.fixture
 def mock_auth():
@@ -31,15 +27,17 @@ def mock_auth():
 
 def test_root_endpoint():
     """Test root endpoint"""
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "message" in response.json()
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "message" in response.json()
 
 def test_health_endpoint():
     """Test health endpoint"""
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert "status" in response.json()
+    with TestClient(app) as client:
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert "status" in response.json()
 
 @pytest.mark.asyncio
 async def test_ml_service():
