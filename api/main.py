@@ -1,12 +1,28 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import os
 from datetime import datetime
+from contextlib import asynccontextmanager
+
+# ⚡ Bolt: Lifespan manager for a shared database connection.
+# This creates a single SQLite connection when the app starts and closes it
+# when the app shuts down. Reusing the connection is more performant than
+# creating a new one for every single request.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # `check_same_thread=False` is required for SQLite when used in a multi-threaded
+    # environment like FastAPI.
+    conn = sqlite3.connect("genxdb_fx.db", check_same_thread=False)
+    app.state.db_conn = conn
+    yield
+    conn.close()
+
 app = FastAPI(
     title="GenX-FX Trading Platform API",
     description="Trading platform with ML-powered predictions",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -38,7 +54,7 @@ async def root():
     }
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """
     Performs a health check on the API and its database connection.
 
@@ -49,11 +65,10 @@ async def health_check():
               database connection is successful, 'unhealthy' otherwise.
     """
     try:
-        # Test database connection
-        conn = sqlite3.connect("genxdb_fx.db")
+        # ⚡ Bolt: Reuse the shared database connection from the app state.
+        conn = request.app.state.db_conn
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        conn.close()
 
         return {
             "status": "healthy",
@@ -100,7 +115,7 @@ async def get_predictions():
     }
 
 @app.get("/trading-pairs")
-async def get_trading_pairs():
+async def get_trading_pairs(request: Request):
     """
     Retrieves a list of active trading pairs from the database.
 
@@ -110,13 +125,13 @@ async def get_trading_pairs():
         dict: A dictionary containing a list of trading pairs or an error message.
     """
     try:
-        conn = sqlite3.connect("genxdb_fx.db")
+        # ⚡ Bolt: Reuse the shared database connection from the app state.
+        conn = request.app.state.db_conn
         cursor = conn.cursor()
         cursor.execute(
             "SELECT symbol, base_currency, quote_currency FROM trading_pairs WHERE is_active = 1"
         )
         pairs = cursor.fetchall()
-        conn.close()
 
         return {
             "trading_pairs": [
@@ -132,7 +147,7 @@ async def get_trading_pairs():
         return {"error": str(e)}
 
 @app.get("/users")
-async def get_users():
+async def get_users(request: Request):
     """
     Retrieves a list of users from the database.
 
@@ -142,11 +157,11 @@ async def get_users():
         dict: A dictionary containing a list of users or an error message.
     """
     try:
-        conn = sqlite3.connect("genxdb_fx.db")
+        # ⚡ Bolt: Reuse the shared database connection from the app state.
+        conn = request.app.state.db_conn
         cursor = conn.cursor()
         cursor.execute("SELECT username, email, is_active FROM users")
         users = cursor.fetchall()
-        conn.close()
 
         return {
             "users": [

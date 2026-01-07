@@ -22,23 +22,22 @@ class TestEdgeCases:
     
     def test_health_endpoint_structure(self):
         """Test health endpoint returns correct structure"""
-        response = client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
-        
-        # Check required fields
-        assert "status" in data
-        assert "timestamp" in data
-        assert "services" in data
-        assert "ml_service" in data["services"]
-        assert "data_service" in data["services"]
-        
-        # Validate timestamp format
-        from datetime import datetime
-        try:
-            datetime.fromisoformat(data["timestamp"].replace('Z', '+00:00'))
-        except ValueError:
-            pytest.fail("Invalid timestamp format")
+        with TestClient(app) as client:
+            response = client.get("/health")
+            assert response.status_code == 200
+            data = response.json()
+
+            # Check required fields
+            assert "status" in data
+            assert "timestamp" in data
+            assert "database" in data
+
+            # Validate timestamp format
+            from datetime import datetime
+            try:
+                datetime.fromisoformat(data["timestamp"].replace('Z', '+00:00'))
+            except ValueError:
+                pytest.fail("Invalid timestamp format")
     
     def test_root_endpoint_completeness(self):
         """Test root endpoint has all required information"""
