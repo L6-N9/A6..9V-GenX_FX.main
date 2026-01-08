@@ -2,6 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import Mock, patch
 import os
+import sys
 
 # Skip tests if FastAPI is not available
 try:
@@ -17,10 +18,14 @@ if FASTAPI_AVAILABLE:
     os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test"
     os.environ["MONGODB_URL"] = "mongodb://localhost:27017/test"
     os.environ["REDIS_URL"] = "redis://localhost:6379"
-    
-    client = TestClient(app)
-else:
-    client = None
+
+@pytest.fixture
+def client():
+    """Create a test client that respects the lifespan context manager."""
+    if not FASTAPI_AVAILABLE:
+        pytest.skip("FastAPI not installed, skipping API tests.")
+    with TestClient(app) as c:
+        yield c
 
 @pytest.fixture
 def mock_auth():
@@ -29,13 +34,13 @@ def mock_auth():
         mock_user.return_value = {"username": "testuser"}
         yield mock_user
 
-def test_root_endpoint():
+def test_root_endpoint(client):
     """Test root endpoint"""
     response = client.get("/")
     assert response.status_code == 200
     assert "message" in response.json()
 
-def test_health_endpoint():
+def test_health_endpoint(client):
     """Test health endpoint"""
     response = client.get("/health")
     assert response.status_code == 200
