@@ -3,6 +3,7 @@ import asyncio
 from unittest.mock import Mock, patch
 import os
 import sys
+import sqlite3
 
 # Skip tests if FastAPI is not available
 try:
@@ -21,11 +22,45 @@ if FASTAPI_AVAILABLE:
 
 @pytest.fixture
 def client():
-    """Create a test client that respects the lifespan context manager."""
+    """
+    ⚡ Bolt: Create a test client with an in-memory SQLite database.
+    This fixture ensures that tests run against a clean, isolated database.
+    We use a mock connection and cursor to allow for call assertions.
+    """
     if not FASTAPI_AVAILABLE:
         pytest.skip("FastAPI not installed, skipping API tests.")
-    with TestClient(app) as c:
-        yield c
+
+    real_conn = sqlite3.connect(":memory:", check_same_thread=False)
+    cursor = real_conn.cursor()
+    cursor.execute("""
+    CREATE TABLE trading_pairs (
+        id INTEGER PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        base_currency TEXT NOT NULL,
+        quote_currency TEXT NOT NULL,
+        is_active INTEGER NOT NULL
+    )
+    """)
+    cursor.execute("""
+    INSERT INTO trading_pairs (symbol, base_currency, quote_currency, is_active)
+    VALUES ('EURUSD', 'EUR', 'USD', 1),
+           ('GBPUSD', 'GBP', 'USD', 1)
+    """)
+    real_conn.commit()
+
+    # Create a mock cursor that wraps a real cursor, allowing assertions
+    mock_cursor = Mock(wraps=real_conn.cursor())
+
+    # Create a mock connection that wraps the real one
+    mock_conn = Mock(wraps=real_conn)
+    # Configure the mock connection's cursor() method to return our mock_cursor
+    mock_conn.cursor.return_value = mock_cursor
+
+    with patch("sqlite3.connect", return_value=mock_conn):
+        with TestClient(app) as c:
+            yield c
+
+    real_conn.close()
 
 @pytest.fixture
 def mock_auth():
@@ -135,3 +170,32 @@ def test_config_loading():
     assert isinstance(config, dict)
     assert "database_url" in config
     assert "symbols" in config
+
+def test_trading_pairs_cache(client):
+    """
+    ⚡ Bolt: Test that the trading_pairs endpoint is cached by ensuring the
+    database is only queried on the first request.
+    """
+    from api.utils import cache
+    cache.clear()
+
+    mock_conn = app.state.db_conn
+    mock_cursor = mock_conn.cursor.return_value
+
+    # First request should trigger a database query
+    response1 = client.get("/trading-pairs")
+    assert response1.status_code == 200
+    assert "trading_pairs" in response1.json()
+    mock_conn.cursor.assert_called_once()
+    mock_cursor.execute.assert_called_once()
+
+    # Reset mocks
+    mock_conn.cursor.reset_mock()
+    mock_cursor.execute.reset_mock()
+
+    # Second request should be served from the cache
+    response2 = client.get("/trading-pairs")
+    assert response2.status_code == 200
+    assert response1.json() == response2.json()
+    mock_conn.cursor.assert_not_called()
+    mock_cursor.execute.assert_not_called()

@@ -4,6 +4,7 @@ import sqlite3
 import os
 from datetime import datetime
 from contextlib import asynccontextmanager
+from api.utils import cache
 
 # ⚡ Bolt: Create a single, reusable database connection to improve performance.
 # By creating the connection when the app starts and closing it when it stops,
@@ -121,15 +122,20 @@ async def get_trading_pairs(request: Request):
     Returns:
         dict: A dictionary containing a list of trading pairs or an error message.
     """
+    # ⚡ Bolt: Check the cache first to avoid a slow database query.
+    cached_pairs = cache.get("trading_pairs")
+    if cached_pairs:
+        return cached_pairs
+
     try:
-        # ⚡ Bolt: Use the shared database connection.
+        # ⚡ Bolt: Cache miss. Query the database and store the result.
         cursor = request.app.state.db_conn.cursor()
         cursor.execute(
             "SELECT symbol, base_currency, quote_currency FROM trading_pairs WHERE is_active = 1"
         )
         pairs = cursor.fetchall()
 
-        return {
+        response = {
             "trading_pairs": [
                 {
                     "symbol": pair[0],
@@ -139,6 +145,9 @@ async def get_trading_pairs(request: Request):
                 for pair in pairs
             ]
         }
+        # ⚡ Bolt: Store the fresh data in the cache for 5 minutes (300s).
+        cache.set("trading_pairs", response, 300)
+        return response
     except Exception as e:
         return {"error": str(e)}
 
