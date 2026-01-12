@@ -135,3 +135,38 @@ def test_config_loading():
     assert isinstance(config, dict)
     assert "database_url" in config
     assert "symbols" in config
+
+def test_trading_pairs_caching(client):
+    """
+    ⚡ Bolt: Verify that the /trading-pairs endpoint caches results.
+    This test ensures that the database is only hit on the first request.
+    Subsequent requests within the cache timeout should return cached data.
+    """
+    # ⚡ Bolt: Clear the cache to ensure test isolation.
+    from api.main import cache
+    cache.clear()
+
+    # ⚡ Bolt: Mock the cursor on the actual connection object used by the app.
+    mock_cursor = Mock()
+    mock_cursor.fetchall.return_value = [
+        ('BTC/USD', 'BTC', 'USD'),
+        ('ETH/USD', 'ETH', 'USD'),
+    ]
+
+    with patch.object(client.app.state, 'db_conn') as mock_db_conn:
+        mock_db_conn.cursor.return_value = mock_cursor
+
+        # First call should hit the database
+        response1 = client.get("/trading-pairs")
+        assert response1.status_code == 200
+        assert len(response1.json()["trading_pairs"]) == 2
+        mock_db_conn.cursor.assert_called_once()
+        mock_cursor.execute.assert_called_once()
+
+        # Second call should be cached
+        response2 = client.get("/trading-pairs")
+        assert response2.status_code == 200
+        assert len(response2.json()["trading_pairs"]) == 2
+        # The cursor and execute methods should NOT be called again
+        mock_db_conn.cursor.assert_called_once()
+        mock_cursor.execute.assert_called_once()
