@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 import sqlite3
 import os
 from datetime import datetime, timedelta
@@ -38,6 +39,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ⚡ Bolt: Add GZip compression to reduce response sizes and improve network speed.
+# This middleware will automatically compress responses for clients that support it.
+# We set a minimum size of 1000 bytes to avoid compressing small responses
+# where the overhead of compression might outweigh the benefits.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.get("/")
 async def root():
