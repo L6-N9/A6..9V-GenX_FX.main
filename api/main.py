@@ -176,23 +176,43 @@ async def get_users(request: Request):
 
     Connects to the SQLite database and fetches user information.
 
+    ⚡ Bolt: To improve performance, the results of this query are cached in-memory
+    for 60 seconds. This reduces database load and speeds up subsequent requests.
+
     Returns:
         dict: A dictionary containing a list of users or an error message.
     """
-    try:
-        # ⚡ Bolt: Use the shared database connection.
-        cursor = request.app.state.db_conn.cursor()
-        cursor.execute("SELECT username, email, is_active FROM users")
-        users = cursor.fetchall()
+    now = datetime.now()
+    cache_entry = cache.get("users")
 
-        return {
-            "users": [
-                {"username": user[0], "email": user[1], "is_active": bool(user[2])}
-                for user in users
-            ]
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
+        return cache_entry["data"]
+
+    # ⚡ Bolt: Use a lock to prevent race conditions when updating the cache.
+    async with cache_lock:
+        # ⚡ Bolt: Double-check the cache in case it was populated while waiting for the lock.
+        cache_entry = cache.get("users")
+        if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
+            return cache_entry["data"]
+
+        try:
+            # ⚡ Bolt: Use the shared database connection.
+            cursor = request.app.state.db_conn.cursor()
+            cursor.execute("SELECT username, email, is_active FROM users")
+            users = cursor.fetchall()
+
+            response_data = {
+                "users": [
+                    {"username": user[0], "email": user[1], "is_active": bool(user[2])}
+                    for user in users
+                ]
+            }
+
+            # ⚡ Bolt: Update the cache.
+            cache["users"] = {"timestamp": now, "data": response_data}
+            return response_data
+        except Exception as e:
+            return {"error": str(e)}
 
 @app.get("/mt5-info")
 async def get_mt5_info():
