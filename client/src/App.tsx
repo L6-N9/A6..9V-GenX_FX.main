@@ -10,20 +10,30 @@ function App() {
   const [apiHealth, setApiHealth] = useState<any>(null)
 
   useEffect(() => {
-    const API = 'http://localhost:8081'
+    const API = 'http://localhost:8081';
 
-    // Test Node.js server health
-    fetch(`${API}/health`)
-      .then(res => res.json())
-      .then(data => setHealth(data))
-      .catch(err => console.error('Node.js server error:', err))
+    // ⚡ Bolt: Use Promise.all to run API calls concurrently for faster loading.
+    // This lets us fetch both health statuses at the same time instead of one
+    // after the other, making the UI feel more responsive.
+    const fetchHealth = async () => {
+      try {
+        const [healthRes, apiHealthRes] = await Promise.all([
+          fetch(`${API}/health`),
+          fetch(`${API}/api/v1/health`)
+        ]);
 
-    // Test Python API health  
-    fetch(`${API}/api/v1/health`)
-      .then(res => res.json())
-      .then(data => setApiHealth(data))
-      .catch(err => console.error('Python API error:', err))
-  }, [])
+        const healthData = await healthRes.json();
+        const apiHealthData = await apiHealthRes.json();
+
+        setHealth(healthData);
+        setApiHealth(apiHealthData);
+      } catch (err) {
+        console.error('Error fetching health status:', err);
+      }
+    };
+
+    fetchHealth();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
