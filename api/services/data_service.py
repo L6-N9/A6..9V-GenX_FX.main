@@ -68,6 +68,29 @@ class DataService:
         """
         return "healthy" if self.initialized else "unhealthy"
 
+    async def get_batch_realtime_data(self, symbols: list[str]) -> dict[str, pd.DataFrame]:
+        """
+        ⚡ Bolt: Add batch data fetching to reduce overhead.
+        Retrieves real-time market data for a list of symbols in batch.
+
+        Args:
+            symbols (list[str]): The list of trading symbols to fetch data for.
+
+        Returns:
+            dict[str, pd.DataFrame]: A dictionary mapping each symbol to its data.
+        """
+        if not self.initialized:
+            raise ValueError("Data Service not initialized")
+
+        # In a real implementation, this would be a single efficient query.
+        tasks = [self.get_realtime_data(symbol) for symbol in symbols]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return {
+            symbol: data
+            for symbol, data in zip(symbols, results)
+            if data is not None and not isinstance(data, Exception)
+        }
+
     async def start_data_feed(self):
         """
         Starts a background task to continuously fetch data.
