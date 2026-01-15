@@ -6,12 +6,7 @@ import os
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 import asyncio
-
-# ⚡ Bolt: Add a thread-safe in-memory cache.
-# This will store frequently accessed data that doesn't change often.
-cache = {}
-CACHE_TIMEOUT = timedelta(seconds=60)
-cache_lock = asyncio.Lock()
+from .utils.cache import async_cache
 
 # ⚡ Bolt: Create a single, reusable database connection to improve performance.
 # By creating the connection when the app starts and closing it when it stops,
@@ -126,6 +121,7 @@ async def get_predictions():
     }
 
 @app.get("/trading-pairs")
+@async_cache(ttl=timedelta(seconds=60))
 async def get_trading_pairs(request: Request):
     """
     Retrieves a list of active trading pairs from the database.
@@ -133,50 +129,36 @@ async def get_trading_pairs(request: Request):
     Connects to the SQLite database and fetches all pairs marked as active.
 
     ⚡ Bolt: To improve performance, the results of this query are cached in-memory
-    for 60 seconds. This reduces database load and speeds up subsequent requests.
+    for 60 seconds using a reusable decorator. This reduces database load and
+    speeds up subsequent requests.
 
     Returns:
         dict: A dictionary containing a list of trading pairs or an error message.
     """
-    now = datetime.now()
-    cache_entry = cache.get("trading_pairs")
+    try:
+        # ⚡ Bolt: Use the shared database connection.
+        cursor = request.app.state.db_conn.cursor()
+        cursor.execute(
+            "SELECT symbol, base_currency, quote_currency FROM trading_pairs WHERE is_active = 1"
+        )
+        pairs = cursor.fetchall()
 
-    if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
-        return cache_entry["data"]
-
-    # ⚡ Bolt: Use a lock to prevent race conditions when updating the cache.
-    async with cache_lock:
-        # ⚡ Bolt: Double-check the cache in case it was populated while waiting for the lock.
-        cache_entry = cache.get("trading_pairs")
-        if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
-            return cache_entry["data"]
-
-        try:
-            # ⚡ Bolt: Use the shared database connection.
-            cursor = request.app.state.db_conn.cursor()
-            cursor.execute(
-                "SELECT symbol, base_currency, quote_currency FROM trading_pairs WHERE is_active = 1"
-            )
-            pairs = cursor.fetchall()
-
-            response_data = {
-                "trading_pairs": [
-                    {
-                        "symbol": pair[0],
-                        "base_currency": pair[1],
-                        "quote_currency": pair[2],
-                    }
-                    for pair in pairs
-                ]
-            }
-
-            # ⚡ Bolt: Update the cache.
-            cache["trading_pairs"] = {"timestamp": now, "data": response_data}
-            return response_data
-        except Exception as e:
-            return {"error": str(e)}
+        response_data = {
+            "trading_pairs": [
+                {
+                    "symbol": pair[0],
+                    "base_currency": pair[1],
+                    "quote_currency": pair[2],
+                }
+                for pair in pairs
+            ]
+        }
+        return response_data
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/users")
+@async_cache(ttl=timedelta(seconds=60))
 async def get_users(request: Request):
     """
     Retrieves a list of users from the database.
@@ -184,42 +166,27 @@ async def get_users(request: Request):
     Connects to the SQLite database and fetches user information.
 
     ⚡ Bolt: To improve performance, the results of this query are cached in-memory
-    for 60 seconds. This reduces database load and speeds up subsequent requests.
+    for 60 seconds using a reusable decorator. This reduces database load and
+    speeds up subsequent requests.
 
     Returns:
         dict: A dictionary containing a list of users or an error message.
     """
-    now = datetime.now()
-    cache_entry = cache.get("users")
+    try:
+        # ⚡ Bolt: Use the shared database connection.
+        cursor = request.app.state.db_conn.cursor()
+        cursor.execute("SELECT username, email, is_active FROM users")
+        users = cursor.fetchall()
 
-    if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
-        return cache_entry["data"]
-
-    # ⚡ Bolt: Use a lock to prevent race conditions when updating the cache.
-    async with cache_lock:
-        # ⚡ Bolt: Double-check the cache in case it was populated while waiting for the lock.
-        cache_entry = cache.get("users")
-        if cache_entry and (now - cache_entry["timestamp"]) < CACHE_TIMEOUT:
-            return cache_entry["data"]
-
-        try:
-            # ⚡ Bolt: Use the shared database connection.
-            cursor = request.app.state.db_conn.cursor()
-            cursor.execute("SELECT username, email, is_active FROM users")
-            users = cursor.fetchall()
-
-            response_data = {
-                "users": [
-                    {"username": user[0], "email": user[1], "is_active": bool(user[2])}
-                    for user in users
-                ]
-            }
-
-            # ⚡ Bolt: Update the cache.
-            cache["users"] = {"timestamp": now, "data": response_data}
-            return response_data
-        except Exception as e:
-            return {"error": str(e)}
+        response_data = {
+            "users": [
+                {"username": user[0], "email": user[1], "is_active": bool(user[2])}
+                for user in users
+            ]
+        }
+        return response_data
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.get("/mt5-info")
 async def get_mt5_info():
