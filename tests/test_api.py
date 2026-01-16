@@ -143,7 +143,7 @@ def test_trading_pairs_caching(client):
     Subsequent requests within the cache timeout should return cached data.
     """
     # ⚡ Bolt: Clear the cache to ensure test isolation.
-    from api.main import cache
+    from api.utils.cache import cache
     cache.clear()
 
     # ⚡ Bolt: Mock the cursor on the actual connection object used by the app.
