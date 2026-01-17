@@ -10,20 +10,40 @@ function App() {
   const [apiHealth, setApiHealth] = useState<any>(null)
 
   useEffect(() => {
-    const API = 'http://localhost:8081'
+    const API = 'http://localhost:8081';
 
-    // Test Node.js server health
-    fetch(`${API}/health`)
-      .then(res => res.json())
-      .then(data => setHealth(data))
-      .catch(err => console.error('Node.js server error:', err))
+    /**
+     * ⚡ Bolt: Fetch health status in parallel to improve initial load time.
+     * Instead of waiting for the first request to finish before starting the second,
+     * Promise.all() runs them concurrently.
+     */
+    const fetchHealth = async () => {
+      try {
+        const [healthRes, apiHealthRes] = await Promise.all([
+          fetch(`${API}/health`),
+          fetch(`${API}/api/v1/health`),
+        ]);
 
-    // Test Python API health  
-    fetch(`${API}/api/v1/health`)
-      .then(res => res.json())
-      .then(data => setApiHealth(data))
-      .catch(err => console.error('Python API error:', err))
-  }, [])
+        if (healthRes.ok) {
+          const healthData = await healthRes.json();
+          setHealth(healthData);
+        } else {
+          console.error('Node.js server error:', healthRes.statusText);
+        }
+
+        if (apiHealthRes.ok) {
+          const apiHealthData = await apiHealthRes.json();
+          setApiHealth(apiHealthData);
+        } else {
+          console.error('Python API error:', apiHealthRes.statusText);
+        }
+      } catch (err) {
+        console.error('Error fetching health data:', err);
+      }
+    };
+
+    fetchHealth();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-100 p-8">
