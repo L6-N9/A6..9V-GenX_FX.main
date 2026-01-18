@@ -42,12 +42,16 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 @app.get("/")
+@async_cache(ttl=timedelta(seconds=60))
 async def root():
     """
     Root endpoint for the API.
 
     Provides basic information about the API, including its name, version,
     status, and repository URL.
+
+    ⚡ Bolt: This response is static, so we cache it for 60 seconds
+    to reduce server load from frequent polling (e.g., health checks).
 
     Returns:
         dict: A dictionary containing API information.
@@ -89,11 +93,16 @@ async def health_check(request: Request):
         }
 
 @app.get("/api/v1/health")
+@async_cache(ttl=timedelta(seconds=60))
 async def api_health_check():
     """
     Provides a health check for the v1 API services.
 
     Returns a hardcoded status indicating that the main services are active.
+
+    ⚡ Bolt: This static health check is a prime candidate for caching.
+    Caching for 60 seconds prevents excessive processing from frequent
+    checks by monitoring services.
 
     Returns:
         dict: A dictionary with the health status of internal services.
@@ -189,9 +198,13 @@ async def get_users(request: Request):
         return {"error": str(e)}
 
 @app.get("/mt5-info")
+@async_cache(ttl=timedelta(seconds=60))
 async def get_mt5_info():
     """
     Provides hardcoded information about the MT5 connection.
+
+    ⚡ Bolt: The MT5 connection info is static. Caching this response for
+    60 seconds avoids unnecessary processing for a fixed-data endpoint.
 
     Returns:
         dict: A dictionary with static MT5 login and server details.
