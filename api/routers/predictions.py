@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from typing import List, Optional
+from typing import List, Optional, Dict
 import joblib
 import asyncio
 from datetime import datetime
@@ -84,7 +84,7 @@ async def batch_predictions(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    ⚡ Bolt: Refactor to use batch processing for improved performance.
+    ⚡ Bolt: Refactored to use batch processing for improved performance.
     Generates predictions for a batch of symbols concurrently.
 
     Args:
@@ -97,8 +97,8 @@ async def batch_predictions(
         dict: A dictionary containing lists of successful predictions and errors.
     """
     symbol_list = [s.strip().upper() for s in symbols.split(",")]
-    predictions = []
-    errors = []
+    predictions: List[PredictionResponse] = []
+    errors: List[Dict[str, str]] = []
 
     try:
         # Fetch data in one batch
@@ -109,12 +109,11 @@ async def batch_predictions(
         for symbol in missing_symbols:
             errors.append({"symbol": symbol, "error": "No data found"})
 
-        # Run predictions in one batch
+        # Run predictions in one batch for the symbols with data
         if market_data_batch:
             prediction_results = await ml_service.batch_predict(
                 market_data_batch, use_ensemble
             )
-
             for symbol, result in prediction_results.items():
                 predictions.append(
                     PredictionResponse(
@@ -129,22 +128,21 @@ async def batch_predictions(
 
     except Exception as e:
         logger.error(f"Batch prediction error for symbols {symbols}: {str(e)}")
-        # Add a generic error for all symbols if the batch process fails
+        # Add a generic error for all symbols if the batch process fails unexpectedly
         for symbol in symbol_list:
             if not any(err["symbol"] == symbol for err in errors):
-                 errors.append({"symbol": symbol, "error": f"Batch prediction failed: {str(e)}"})
+                errors.append({"symbol": symbol, "error": f"An unexpected error occurred: {str(e)}"})
 
     successful_symbols = {p.symbol for p in predictions}
-    final_errors = [e for e in errors if e["symbol"] not in successful_symbols]
 
     # Add errors for symbols that were successfully fetched but failed prediction
     prediction_failed_symbols = set(market_data_batch.keys()) - successful_symbols
     for symbol in prediction_failed_symbols:
-        final_errors.append({"symbol": symbol, "error": "Prediction failed"})
+        errors.append({"symbol": symbol, "error": "Prediction failed"})
 
     return {
         "predictions": predictions,
-        "errors": final_errors,
+        "errors": errors,
         "total_processed": len(symbol_list),
     }
 
