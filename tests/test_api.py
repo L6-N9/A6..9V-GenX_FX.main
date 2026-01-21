@@ -170,3 +170,47 @@ def test_trading_pairs_caching(client):
         # The cursor and execute methods should NOT be called again
         mock_db_conn.cursor.assert_called_once()
         mock_cursor.execute.assert_called_once()
+
+
+from unittest.mock import AsyncMock
+
+
+@pytest.mark.asyncio
+@patch("api.main.get_trading_pairs", new_callable=AsyncMock)
+@patch("api.services.ml_service.MLService.batch_predict", new_callable=AsyncMock)
+@patch(
+    "api.services.data_service.DataService.get_batch_realtime_data",
+    new_callable=AsyncMock,
+)
+async def test_get_predictions_endpoint_optimized(
+    mock_get_batch_data, mock_batch_predict, mock_get_trading_pairs, client
+):
+    """⚡ Bolt: Test that the get_predictions endpoint uses batch operations."""
+    # Arrange
+    mock_get_trading_pairs.return_value = {
+        "trading_pairs": [
+            {"symbol": "EUR/USD", "base_currency": "EUR", "quote_currency": "USD"},
+            {"symbol": "GBP/USD", "base_currency": "GBP", "quote_currency": "USD"},
+        ]
+    }
+    mock_get_batch_data.return_value = {
+        "EUR/USD": {"feature": 1},
+        "GBP/USD": {"feature": 2},
+    }
+    mock_batch_predict.return_value = {
+        "EUR/USD": {"signal": "buy", "confidence": 0.9},
+        "GBP/USD": {"signal": "sell", "confidence": 0.8},
+    }
+
+    # Act
+    response = client.get("/api/v1/predictions")
+
+    # Assert
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert len(data["predictions"]) == 2
+    assert data["predictions"][0]["symbol"] == "EUR/USD"
+    assert data["predictions"][0]["signal"] == "buy"
+    assert data["predictions"][1]["symbol"] == "GBP/USD"
+    assert data["predictions"][1]["signal"] == "sell"

@@ -7,23 +7,35 @@ from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 import asyncio
 from .utils.cache import async_cache
+from .services.data_service import DataService
+from .services.ml_service import MLService
 
-# ⚡ Bolt: Create a single, reusable database connection to improve performance.
-# By creating the connection when the app starts and closing it when it stops,
-# we avoid the overhead of connecting to the database on every single request.
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """⚡ Bolt: Manage the lifecycle of services and database connections."""
+    # Initialize services
+    app.state.data_service = DataService()
+    app.state.ml_service = MLService()
+    await app.state.data_service.initialize()
+    await app.state.ml_service.initialize()
+
     # Connect to the database
     app.state.db_conn = sqlite3.connect("genxdb_fx.db", check_same_thread=False)
+
     yield
-    # Close the connection
+
+    # Shutdown services and close connections
+    await app.state.data_service.shutdown()
+    await app.state.ml_service.shutdown()
     app.state.db_conn.close()
+
 
 app = FastAPI(
     title="GenX-FX Trading Platform API",
     description="Trading platform with ML-powered predictions",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -114,20 +126,56 @@ async def api_health_check():
     }
 
 @app.get("/api/v1/predictions")
-async def get_predictions():
+async def get_predictions(request: Request):
     """
-    Endpoint to get trading predictions.
-
-    Currently returns a placeholder response.
-
-    Returns:
-        dict: A dictionary containing an empty list of predictions.
+    ⚡ Bolt: Generate and return trading predictions using batch operations.
+    This optimized endpoint fetches all trading pairs, gets their market data in a
+    single batch, and then generates predictions for all symbols in another batch.
+    This avoids the N+1 problem and significantly improves performance.
     """
-    return {
-        "predictions": [],
-        "status": "ready",
-        "timestamp": datetime.now().isoformat(),
-    }
+    try:
+        # Step 1: Get all active trading pairs.
+        pairs_response = await get_trading_pairs(request)
+        if "error" in pairs_response:
+            return {
+                "error": pairs_response["error"],
+                "status": "error",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        symbols = [pair["symbol"] for pair in pairs_response["trading_pairs"]]
+        if not symbols:
+            return {
+                "predictions": [],
+                "status": "success",
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        # Step 2: Fetch market data for all symbols in a single batch.
+        data_service: DataService = request.app.state.data_service
+        market_data_batch = await data_service.get_batch_realtime_data(symbols)
+
+        # Step 3: Get predictions for all symbols in a single batch.
+        ml_service: MLService = request.app.state.ml_service
+        predictions_batch = await ml_service.batch_predict(market_data_batch)
+
+        # Step 4: Format the response.
+        response_data = [
+            {"symbol": symbol, **prediction}
+            for symbol, prediction in predictions_batch.items()
+        ]
+
+        return {
+            "predictions": response_data,
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as e:
+        return {
+            "error": f"An unexpected error occurred: {str(e)}",
+            "status": "error",
+            "timestamp": datetime.now().isoformat(),
+        }
 
 @app.get("/trading-pairs")
 @async_cache(ttl=timedelta(seconds=60))
