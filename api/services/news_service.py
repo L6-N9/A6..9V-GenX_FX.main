@@ -214,17 +214,34 @@ class NewsService:
     
     async def get_market_sentiment_news(self) -> Dict[str, Any]:
         """
-        Gathers a broad range of news for general market sentiment analysis.
+        ⚡ Bolt: Gathers a broad range of news concurrently for general market sentiment analysis.
+        This optimized method uses asyncio.gather to fetch news from all categories
+        in parallel, significantly reducing the total wait time.
 
         Returns:
             Dict[str, Any]: A dictionary containing aggregated news data, including
                             counts and combined text for analysis.
         """
         try:
-            # Get news from all categories
-            crypto_news = await self.get_crypto_news(limit=20)
-            stock_news = await self.get_stock_news(limit=20)
-            forex_news = await self.get_forex_news(limit=10)
+            # ⚡ Bolt: Fetch news from all categories concurrently using asyncio.gather.
+            # This allows all three network requests to run in parallel, reducing the
+            # total execution time from the sum of all requests to the time of the
+            # longest single request. return_exceptions=True ensures that if one
+            # API fails, the others can still succeed.
+            results = await asyncio.gather(
+                self.get_crypto_news(limit=20),
+                self.get_stock_news(limit=20),
+                self.get_forex_news(limit=10),
+                return_exceptions=True,  # Continue if one of the APIs fails
+            )
+
+            # ⚡ Bolt: Safely unpack results, handling potential exceptions.
+            # If a coroutine failed, its result will be an exception instance.
+            # We replace it with an empty list to ensure the downstream logic
+            # doesn't break.
+            crypto_news = results[0] if isinstance(results[0], list) else []
+            stock_news = results[1] if isinstance(results[1], list) else []
+            forex_news = results[2] if isinstance(results[2], list) else []
 
             # Combine all news
             all_news = crypto_news + stock_news + forex_news
