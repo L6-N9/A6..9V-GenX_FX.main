@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 import json
 from alpha_vantage.fundamentaldata import FundamentalData
 from newsapi import NewsApiClient
-import finnhub
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +46,14 @@ class NewsService:
         self.newsapi_client = (
             NewsApiClient(api_key=self.newsapi_key) if self.newsapi_key else None
         )
-        self.finnhub_client = (
-            finnhub.Client(api_key=self.finnhub_key) if self.finnhub_key else None
-        )
         self.alphavantage = (
             FundamentalData(key=self.alphavantage_key)
             if self.alphavantage_key
             else None
         )
+        # ⚡ Bolt: Initialize a single aiohttp session for reuse.
+        # This is more efficient than creating a new session for each request.
+        self._session: Optional[aiohttp.ClientSession] = None
 
         self.initialized = False
 
@@ -80,11 +79,13 @@ class NewsService:
             bool: True if initialization is successful, False otherwise.
         """
         try:
+            # ⚡ Bolt: Create the aiohttp session during initialization.
+            self._session = aiohttp.ClientSession()
             # Test connections
             if self.newsapi_client:
                 await self._test_newsapi()
 
-            if self.finnhub_client:
+            if self.finnhub_key:
                 await self._test_finnhub()
 
             logger.info("News service initialized successfully")
@@ -111,7 +112,7 @@ class NewsService:
         # Create a list of concurrent tasks for fetching news
         if self.newsapi_client:
             tasks.append(self._get_newsapi_articles("cryptocurrency", limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             tasks.append(self._get_finnhub_news("crypto", limit=15))
         if self.newsdata_key:
             tasks.append(self._get_newsdata_articles("cryptocurrency", limit=15))
@@ -153,7 +154,7 @@ class NewsService:
         if self.newsapi_client:
             query = f"{symbol} stock" if symbol else "stock market"
             tasks.append(self._get_newsapi_articles(query, limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             if symbol:
                 tasks.append(self._get_finnhub_company_news(symbol, limit=15))
             else:
@@ -193,7 +194,7 @@ class NewsService:
         # Create a list of concurrent tasks for fetching news
         if self.newsapi_client:
             tasks.append(self._get_newsapi_articles("forex currency", limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             tasks.append(self._get_finnhub_news("forex", limit=10))
 
         # Execute all tasks concurrently and wait for them to complete
@@ -327,7 +328,8 @@ class NewsService:
         self, category: str, limit: int = 15
     ) -> List[Dict[str, Any]]:
         """
-        Fetches general news from Finnhub for a specific category.
+        ⚡ Bolt: Fetches general news from Finnhub asynchronously using aiohttp.
+        This is more efficient than using run_in_executor with a sync library.
 
         Args:
             category (str): The news category (e.g., "general", "forex", "crypto").
@@ -337,9 +339,15 @@ class NewsService:
             List[Dict[str, Any]]: A list of formatted news articles.
         """
         try:
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.finnhub_client.general_news(category, min_id=0)
-            )
+            if not self._session or self._session.closed:
+                logger.warning("aiohttp session is not available.")
+                return []
+            url = "https://finnhub.io/api/v1/news"
+            params = {"category": category, "token": self.finnhub_key}
+
+            async with self._session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -352,19 +360,20 @@ class NewsService:
                     "author": None,
                     "image_url": article["image"],
                 }
-                for article in response[:limit]
+                for article in data[:limit]
             ]
             return articles
 
         except Exception as e:
             logger.error(f"Finnhub news error: {e}")
             return []
-    
+
     async def _get_finnhub_company_news(
         self, symbol: str, limit: int = 15
     ) -> List[Dict[str, Any]]:
         """
-        Fetches company-specific news from Finnhub.
+        ⚡ Bolt: Fetches company-specific news from Finnhub asynchronously using aiohttp.
+        This is more efficient than using run_in_executor with a sync library.
 
         Args:
             symbol (str): The company stock symbol.
@@ -378,12 +387,20 @@ class NewsService:
             from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
             to_date = datetime.now().strftime("%Y-%m-%d")
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.finnhub_client.company_news(
-                    symbol, _from=from_date, to=to_date
-                ),
-            )
+            if not self._session or self._session.closed:
+                logger.warning("aiohttp session is not available.")
+                return []
+            url = "https://finnhub.io/api/v1/company-news"
+            params = {
+                "symbol": symbol,
+                "from": from_date,
+                "to": to_date,
+                "token": self.finnhub_key,
+            }
+
+            async with self._session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -396,7 +413,7 @@ class NewsService:
                     "author": None,
                     "image_url": article["image"],
                 }
-                for article in response[:limit]
+                for article in data[:limit]
             ]
             return articles
 
@@ -533,12 +550,22 @@ class NewsService:
             logger.warning(f"NewsAPI test failed: {e}")
     
     async def _test_finnhub(self):
-        """Tests the Finnhub connection by fetching one general news item."""
+        """⚡ Bolt: Tests the Finnhub connection asynchronously using the shared aiohttp session."""
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.finnhub_client.general_news("general", min_id=0)[:1]
-            )
-            logger.info("Finnhub connection test successful")
+            if not self._session or self._session.closed:
+                logger.warning("aiohttp session is not available for Finnhub test.")
+                return
+
+            url = "https://finnhub.io/api/v1/news"
+            params = {"category": "general", "token": self.finnhub_key}
+
+            async with self._session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
+                if isinstance(data, list):
+                    logger.info("Finnhub connection test successful")
+                else:
+                    logger.warning(f"Finnhub test returned unexpected data format: {type(data)}")
         except Exception as e:
             logger.warning(f"Finnhub test failed: {e}")
     
@@ -556,7 +583,7 @@ class NewsService:
             if self.newsapi_client:
                 await self._test_newsapi()
                 return True
-            if self.finnhub_client:
+            if self.finnhub_key:
                 await self._test_finnhub()
                 return True
             return False
@@ -567,4 +594,7 @@ class NewsService:
     async def shutdown(self):
         """Shuts down the news service."""
         logger.info("Shutting down news service...")
+        if self._session and not self._session.closed:
+            await self._session.close()
+            logger.info("aiohttp session closed.")
         self.initialized = False
