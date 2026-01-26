@@ -62,7 +62,6 @@ google-generativeai>=0.7.0,<1.0.0
 # Data Sources
 praw>=7.7.1,<8.0.0
 newsapi-python>=0.2.7,<1.0.0
-finnhub-python>=2.4.19,<3.0.0
 alpha_vantage>=2.3.1,<3.0.0
 
 # Statistics and Analysis
