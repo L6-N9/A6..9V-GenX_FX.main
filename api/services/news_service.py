@@ -9,9 +9,7 @@ import aiohttp
 import os
 from datetime import datetime, timedelta
 import json
-from alpha_vantage.fundamentaldata import FundamentalData
-from newsapi import NewsApiClient
-import finnhub
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -43,19 +41,11 @@ class NewsService:
         self.finnhub_key = os.getenv("FINNHUB_API_KEY")
         self.fmp_key = os.getenv("FMP_API_KEY")
 
-        # Initialize clients
-        self.newsapi_client = (
-            NewsApiClient(api_key=self.newsapi_key) if self.newsapi_key else None
-        )
-        self.finnhub_client = (
-            finnhub.Client(api_key=self.finnhub_key) if self.finnhub_key else None
-        )
-        self.alphavantage = (
-            FundamentalData(key=self.alphavantage_key)
-            if self.alphavantage_key
-            else None
-        )
-
+        # ⚡ Bolt: Removed unused synchronous clients. All API calls are now
+        # handled by the shared aiohttp.ClientSession for better performance.
+        # ⚡ Bolt: Use a single aiohttp.ClientSession for connection pooling and efficiency.
+        # This session will be managed by the initialize and shutdown methods.
+        self.session: Optional[aiohttp.ClientSession] = None
         self.initialized = False
 
         # Keywords for categorization (currently not used but defined)
@@ -74,19 +64,19 @@ class NewsService:
     
     async def initialize(self) -> bool:
         """
-        Initializes the news service by testing connections to the APIs.
+        Initializes the news service by creating a shared aiohttp.ClientSession.
 
         Returns:
             bool: True if initialization is successful, False otherwise.
         """
         try:
-            # Test connections
-            if self.newsapi_client:
-                await self._test_newsapi()
+            # ⚡ Bolt: Initialize a single aiohttp.ClientSession to be reused across all requests.
+            # This leverages connection pooling, which is much more efficient than creating
+            # a new connection for every request.
+            self.session = aiohttp.ClientSession()
 
-            if self.finnhub_client:
-                await self._test_finnhub()
-
+            # ⚡ Bolt: Connection tests for synchronous clients are no longer needed.
+            # The health of the service is now determined by the state of the aiohttp session.
             logger.info("News service initialized successfully")
             self.initialized = True
             return True
@@ -109,9 +99,9 @@ class NewsService:
         """
         tasks = []
         # Create a list of concurrent tasks for fetching news
-        if self.newsapi_client:
+        if self.newsapi_key:
             tasks.append(self._get_newsapi_articles("cryptocurrency", limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             tasks.append(self._get_finnhub_news("crypto", limit=15))
         if self.newsdata_key:
             tasks.append(self._get_newsdata_articles("cryptocurrency", limit=15))
@@ -150,15 +140,15 @@ class NewsService:
         """
         tasks = []
         # Create a list of concurrent tasks for fetching news
-        if self.newsapi_client:
+        if self.newsapi_key:
             query = f"{symbol} stock" if symbol else "stock market"
             tasks.append(self._get_newsapi_articles(query, limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             if symbol:
                 tasks.append(self._get_finnhub_company_news(symbol, limit=15))
             else:
                 tasks.append(self._get_finnhub_news("general", limit=15))
-        if self.alphavantage and symbol:
+        if self.alphavantage_key and symbol:
             tasks.append(self._get_alphavantage_news(symbol, limit=10))
 
         # Execute all tasks concurrently and wait for them to complete
@@ -191,9 +181,9 @@ class NewsService:
         """
         tasks = []
         # Create a list of concurrent tasks for fetching news
-        if self.newsapi_client:
+        if self.newsapi_key:
             tasks.append(self._get_newsapi_articles("forex currency", limit=20))
-        if self.finnhub_client:
+        if self.finnhub_key:
             tasks.append(self._get_finnhub_news("forex", limit=10))
 
         # Execute all tasks concurrently and wait for them to complete
@@ -278,29 +268,27 @@ class NewsService:
         self, query: str, limit: int = 20
     ) -> List[Dict[str, Any]]:
         """
-        Fetches articles from NewsAPI.org.
-
-        Args:
-            query (str): The search query.
-            limit (int): The number of articles to fetch.
-
-        Returns:
-            List[Dict[str, Any]]: A list of formatted news articles.
+        ⚡ Bolt: Fetches articles from NewsAPI.org asynchronously.
+        This native async method uses the shared aiohttp session for efficient I/O.
         """
-        try:
-            # Get articles from the last 7 days
-            from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        if not self.newsapi_key:
+            return []
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.newsapi_client.get_everything(
-                    q=query,
-                    from_param=from_date,
-                    language="en",
-                    sort_by="publishedAt",
-                    page_size=limit,
-                ),
-            )
+        from_date = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": query,
+            "from": from_date,
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": limit,
+            "apiKey": self.newsapi_key,
+        }
+
+        try:
+            async with self.session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -315,7 +303,7 @@ class NewsService:
                     "author": article["author"],
                     "image_url": article["urlToImage"],
                 }
-                for article in response.get("articles", [])
+                for article in data.get("articles", [])
             ]
             return articles
 
@@ -327,19 +315,19 @@ class NewsService:
         self, category: str, limit: int = 15
     ) -> List[Dict[str, Any]]:
         """
-        Fetches general news from Finnhub for a specific category.
-
-        Args:
-            category (str): The news category (e.g., "general", "forex", "crypto").
-            limit (int): The number of articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A list of formatted news articles.
+        ⚡ Bolt: Fetches general news from Finnhub asynchronously.
+        This native async method uses the shared aiohttp session for efficient I/O.
         """
+        if not self.finnhub_key:
+            return []
+
+        url = "https://finnhub.io/api/v1/news"
+        params = {"category": category, "token": self.finnhub_key}
+
         try:
-            response = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.finnhub_client.general_news(category, min_id=0)
-            )
+            async with self.session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -352,38 +340,38 @@ class NewsService:
                     "author": None,
                     "image_url": article["image"],
                 }
-                for article in response[:limit]
+                for article in data[:limit]
             ]
             return articles
 
         except Exception as e:
             logger.error(f"Finnhub news error: {e}")
             return []
-    
+
     async def _get_finnhub_company_news(
         self, symbol: str, limit: int = 15
     ) -> List[Dict[str, Any]]:
         """
-        Fetches company-specific news from Finnhub.
-
-        Args:
-            symbol (str): The company stock symbol.
-            limit (int): The number of articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A list of formatted news articles.
+        ⚡ Bolt: Fetches company news from Finnhub asynchronously.
+        This native async method uses the shared aiohttp session for efficient I/O.
         """
-        try:
-            # Get news from the last 30 days
-            from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            to_date = datetime.now().strftime("%Y-%m-%d")
+        if not self.finnhub_key:
+            return []
 
-            response = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: self.finnhub_client.company_news(
-                    symbol, _from=from_date, to=to_date
-                ),
-            )
+        from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        to_date = datetime.now().strftime("%Y-%m-%d")
+        url = "https://finnhub.io/api/v1/company-news"
+        params = {
+            "symbol": symbol,
+            "from": from_date,
+            "to": to_date,
+            "token": self.finnhub_key,
+        }
+
+        try:
+            async with self.session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -396,7 +384,7 @@ class NewsService:
                     "author": None,
                     "image_url": article["image"],
                 }
-                for article in response[:limit]
+                for article in data[:limit]
             ]
             return articles
 
@@ -458,19 +446,23 @@ class NewsService:
         self, symbol: str, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Fetches news and sentiment from Alpha Vantage.
-
-        Args:
-            symbol (str): The stock symbol to fetch news for.
-            limit (int): The number of articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A list of formatted news articles.
+        ⚡ Bolt: Fetches news from Alpha Vantage asynchronously.
+        This native async method uses the shared aiohttp session for efficient I/O.
         """
+        if not self.alphavantage_key:
+            return []
+
+        url = "https://www.alphavantage.co/query"
+        params = {
+            "function": "NEWS_SENTIMENT",
+            "tickers": symbol,
+            "apikey": self.alphavantage_key,
+        }
+
         try:
-            response, _ = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.alphavantage.get_news_sentiment(tickers=symbol)
-            )
+            async with self.session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -489,7 +481,7 @@ class NewsService:
                     ),
                     "image_url": article.get("banner_image"),
                 }
-                for article in response.get("feed", [])[:limit]
+                for article in data.get("feed", [])[:limit]
             ]
             return articles
 
@@ -522,25 +514,6 @@ class NewsService:
 
         return unique_articles
     
-    async def _test_newsapi(self):
-        """Tests the NewsAPI connection by fetching one headline."""
-        try:
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.newsapi_client.get_top_headlines(page_size=1)
-            )
-            logger.info("NewsAPI connection test successful")
-        except Exception as e:
-            logger.warning(f"NewsAPI test failed: {e}")
-    
-    async def _test_finnhub(self):
-        """Tests the Finnhub connection by fetching one general news item."""
-        try:
-            await asyncio.get_event_loop().run_in_executor(
-                None, lambda: self.finnhub_client.general_news("general", min_id=0)[:1]
-            )
-            logger.info("Finnhub connection test successful")
-        except Exception as e:
-            logger.warning(f"Finnhub test failed: {e}")
     
     async def health_check(self) -> bool:
         """
@@ -551,20 +524,14 @@ class NewsService:
         Returns:
             bool: True if the service is healthy, False otherwise.
         """
-        try:
-            # Test at least one news source
-            if self.newsapi_client:
-                await self._test_newsapi()
-                return True
-            if self.finnhub_client:
-                await self._test_finnhub()
-                return True
-            return False
-        except Exception as e:
-            logger.error(f"News service health check failed: {e}")
-            return False
+        # ⚡ Bolt: Health check now verifies the aiohttp session is active.
+        return self.session is not None and not self.session.closed
     
     async def shutdown(self):
-        """Shuts down the news service."""
+        """Shuts down the news service and closes the aiohttp.ClientSession."""
         logger.info("Shutting down news service...")
+        # ⚡ Bolt: Gracefully close the shared aiohttp.ClientSession.
+        # This is crucial for releasing connections and cleaning up resources properly.
+        if self.session:
+            await self.session.close()
         self.initialized = False

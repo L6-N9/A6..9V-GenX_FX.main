@@ -9,6 +9,7 @@ import asyncio
 from .utils.cache import async_cache
 from .services.data_service import DataService
 from .services.ml_service import MLService
+from .services.news_service import NewsService
 
 
 @asynccontextmanager
@@ -17,8 +18,10 @@ async def lifespan(app: FastAPI):
     # Initialize services
     app.state.data_service = DataService()
     app.state.ml_service = MLService()
+    app.state.news_service = NewsService()
     await app.state.data_service.initialize()
     await app.state.ml_service.initialize()
+    await app.state.news_service.initialize()
 
     # Connect to the database
     app.state.db_conn = sqlite3.connect("genxdb_fx.db", check_same_thread=False)
@@ -28,6 +31,7 @@ async def lifespan(app: FastAPI):
     # Shutdown services and close connections
     await app.state.data_service.shutdown()
     await app.state.ml_service.shutdown()
+    await app.state.news_service.shutdown()
     app.state.db_conn.close()
 
 
