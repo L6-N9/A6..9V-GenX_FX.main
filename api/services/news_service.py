@@ -8,8 +8,7 @@ from typing import Dict, Any, List, Optional
 import aiohttp
 import os
 from datetime import datetime, timedelta
-import json
-import logging
+from ..utils.cache import async_cache
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +84,7 @@ class NewsService:
             logger.error(f"Failed to initialize news service: {e}")
             return False
     
+    @async_cache(ttl=timedelta(minutes=5))
     async def get_crypto_news(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
         ⚡ Bolt: Aggregates cryptocurrency news from multiple sources concurrently.
@@ -122,6 +122,7 @@ class NewsService:
 
         return sorted_news[:limit]
     
+    @async_cache(ttl=timedelta(minutes=5))
     async def get_stock_news(
         self, symbol: Optional[str] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
@@ -167,6 +168,7 @@ class NewsService:
 
         return sorted_news[:limit]
     
+    @async_cache(ttl=timedelta(minutes=5))
     async def get_forex_news(self, limit: int = 30) -> List[Dict[str, Any]]:
         """
         ⚡ Bolt: Aggregates forex news from multiple sources concurrently.
@@ -396,7 +398,8 @@ class NewsService:
         self, query: str, limit: int = 15
     ) -> List[Dict[str, Any]]:
         """
-        Fetches articles from NewsData.io.
+        ⚡ Bolt: Fetches articles from NewsData.io asynchronously using the shared session.
+        This leverages connection pooling for better performance.
 
         Args:
             query (str): The search query.
@@ -405,6 +408,9 @@ class NewsService:
         Returns:
             List[Dict[str, Any]]: A list of formatted news articles.
         """
+        if not self.newsdata_key:
+            return []
+
         try:
             url = "https://newsdata.io/api/1/news"
             params = {
@@ -414,10 +420,9 @@ class NewsService:
                 "size": limit,
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
+            async with self.session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
