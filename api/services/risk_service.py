@@ -20,6 +20,17 @@ class RiskService:
         """Initializes the RiskService with default risk parameters."""
         self.max_position_size = 0.1
         self.max_risk_per_trade = 0.02
+        self.initialized = False
+
+    async def initialize(self):
+        """Initializes the risk service."""
+        logger.info("Initializing Risk Service...")
+        self.initialized = True
+
+    async def shutdown(self):
+        """Shuts down the risk service."""
+        logger.info("Shutting down Risk Service...")
+        self.initialized = False
 
     async def assess_signal_risk(
         self, symbol: str, signal_type: SignalType, confidence: float

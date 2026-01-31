@@ -162,3 +162,9 @@ class TradingService:
     async def stop_auto_trading(self):
         """Stops the automated trading strategy."""
         logger.info("Stopping auto trading")
+
+    async def shutdown(self):
+        """Shuts down the trading service and stops any active strategies."""
+        logger.info("Shutting down Trading Service...")
+        await self.stop_auto_trading()
+        self.initialized = False
