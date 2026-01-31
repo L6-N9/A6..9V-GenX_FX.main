@@ -10,28 +10,48 @@ from .utils.cache import async_cache
 from .services.data_service import DataService
 from .services.ml_service import MLService
 from .services.news_service import NewsService
+from .services.trading_service import TradingService
+from .services.risk_service import RiskService
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """⚡ Bolt: Manage the lifecycle of services and database connections."""
-    # Initialize services
+    # ⚡ Bolt: Instantiate all core services.
+    # By centralizing service management in the lifespan, we ensure they are
+    # properly initialized once and shared across all request handlers.
     app.state.data_service = DataService()
     app.state.ml_service = MLService()
     app.state.news_service = NewsService()
-    await app.state.data_service.initialize()
-    await app.state.ml_service.initialize()
-    await app.state.news_service.initialize()
+    app.state.trading_service = TradingService()
+    app.state.risk_service = RiskService()
+
+    # ⚡ Bolt: Initialize all services concurrently using asyncio.gather.
+    # This significantly reduces startup time by overlapping independent I/O-bound
+    # initialization tasks (e.g., setting up network sessions, loading models).
+    await asyncio.gather(
+        app.state.data_service.initialize(),
+        app.state.ml_service.initialize(),
+        app.state.news_service.initialize(),
+        app.state.trading_service.initialize(),
+        app.state.risk_service.initialize(),
+    )
 
     # Connect to the database
     app.state.db_conn = sqlite3.connect("genxdb_fx.db", check_same_thread=False)
 
     yield
 
-    # Shutdown services and close connections
-    await app.state.data_service.shutdown()
-    await app.state.ml_service.shutdown()
-    await app.state.news_service.shutdown()
+    # ⚡ Bolt: Shutdown all services concurrently during application teardown.
+    # This ensures a faster and cleaner shutdown process.
+    await asyncio.gather(
+        app.state.data_service.shutdown(),
+        app.state.ml_service.shutdown(),
+        app.state.news_service.shutdown(),
+        app.state.trading_service.shutdown(),
+        app.state.risk_service.shutdown(),
+        return_exceptions=True,
+    )
     app.state.db_conn.close()
 
 

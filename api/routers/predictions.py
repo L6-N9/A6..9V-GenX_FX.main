@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Request
 from typing import List, Optional
 import joblib
 import asyncio
@@ -14,14 +14,11 @@ from ..utils.auth import get_current_user
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 logger = logging.getLogger(__name__)
 
-# Initialize services
-ml_service = MLService()
-data_service = DataService()
-
 @router.post("/", response_model=PredictionResponse)
 async def create_prediction(
-    request: PredictionRequest,
+    payload: PredictionRequest,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -30,41 +27,35 @@ async def create_prediction(
     This endpoint retrieves real-time market data, uses the machine learning
     service to generate a prediction, and logs the prediction in a background task.
 
-    Args:
-        request (PredictionRequest): The request body containing the symbol and other
-                                     prediction parameters.
-        background_tasks (BackgroundTasks): FastAPI's background task runner.
-        current_user (dict): The authenticated user.
-
-    Returns:
-        PredictionResponse: An object containing the prediction details.
-
-    Raises:
-        HTTPException: If data for the symbol cannot be found or if the
-                       prediction process fails.
+    ⚡ Bolt: Refactored to use shared service instances from the application state.
+    This avoids redundant object creation and ensures that all requests use
+    the same initialized and configured services.
     """
+    ml_service: MLService = request.app.state.ml_service
+    data_service: DataService = request.app.state.data_service
+
     try:
         # Get real-time market data
-        market_data = await data_service.get_realtime_data(request.symbol)
+        market_data = await data_service.get_realtime_data(payload.symbol)
         if market_data is None or market_data.empty:
             raise HTTPException(
-                status_code=404, detail=f"No data found for symbol {request.symbol}"
+                status_code=404, detail=f"No data found for symbol {payload.symbol}"
             )
 
         # Generate prediction
         prediction_result = await ml_service.predict(
-            symbol=request.symbol,
+            symbol=payload.symbol,
             market_data=market_data,
-            use_ensemble=request.use_ensemble,
+            use_ensemble=payload.use_ensemble,
         )
 
         # Log prediction for future model training
         background_tasks.add_task(
-            ml_service.log_prediction, request.symbol, prediction_result
+            ml_service.log_prediction, payload.symbol, prediction_result
         )
 
         return PredictionResponse(
-            symbol=request.symbol,
+            symbol=payload.symbol,
             prediction=SignalType(prediction_result["signal"]),
             confidence=prediction_result["confidence"],
             timestamp=datetime.now(),
@@ -73,12 +64,13 @@ async def create_prediction(
         )
 
     except Exception as e:
-        logger.error(f"Prediction error for {request.symbol}: {str(e)}")
+        logger.error(f"Prediction error for {payload.symbol}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 @router.get("/batch/{symbols}")
 async def batch_predictions(
     symbols: str,
+    request: Request,
     timeframe: str = "1h",
     use_ensemble: bool = True,
     current_user: dict = Depends(get_current_user),
@@ -99,6 +91,9 @@ async def batch_predictions(
     symbol_list = [s.strip().upper() for s in symbols.split(",")]
     predictions = []
     errors = []
+
+    ml_service: MLService = request.app.state.ml_service
+    data_service: DataService = request.app.state.data_service
 
     try:
         # Fetch data in one batch
@@ -149,19 +144,15 @@ async def batch_predictions(
     }
 
 @router.get("/model/metrics", response_model=ModelMetrics)
-async def get_model_metrics(current_user: dict = Depends(get_current_user)):
+async def get_model_metrics(
+    request: Request, current_user: dict = Depends(get_current_user)
+):
     """
     Retrieves the performance metrics of the current prediction model.
 
-    Args:
-        current_user (dict): The authenticated user.
-
-    Returns:
-        ModelMetrics: An object containing model performance metrics.
-
-    Raises:
-        HTTPException: If the metrics cannot be retrieved.
+    ⚡ Bolt: Refactored to use shared service instance from the application state.
     """
+    ml_service: MLService = request.app.state.ml_service
     try:
         metrics = await ml_service.get_model_metrics()
         return ModelMetrics(**metrics)
@@ -172,23 +163,16 @@ async def get_model_metrics(current_user: dict = Depends(get_current_user)):
 @router.post("/model/retrain")
 async def retrain_model(
     background_tasks: BackgroundTasks,
+    request: Request,
     symbols: List[str] = ["BTCUSDT", "ETHUSDT"],
     current_user: dict = Depends(get_current_user),
 ):
     """
     Triggers a background task to retrain the prediction model.
 
-    Args:
-        background_tasks (BackgroundTasks): FastAPI's background task runner.
-        symbols (List[str]): A list of symbols to use for retraining the model.
-        current_user (dict): The authenticated user.
-
-    Returns:
-        dict: A confirmation message that the retraining has started.
-
-    Raises:
-        HTTPException: If the retraining task fails to start.
+    ⚡ Bolt: Refactored to use shared service instance from the application state.
     """
+    ml_service: MLService = request.app.state.ml_service
     try:
         background_tasks.add_task(ml_service.retrain_model, symbols)
         return {"message": "Model retraining started", "symbols": symbols}
