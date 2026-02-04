@@ -25,8 +25,8 @@ from api.services.asset_manager import (
 )
 from api.services.ea_communication import TradingSignal, create_ea_server
 from api.services.enhanced_gemini_service import create_enhanced_gemini_service
-from api.services.fxcm_service import TradeSignal, create_fxcm_service
-from api.services.news_service import NewsService
+from api.services.fxcm_service import create_fxcm_service
+from api.services.news_service import create_news_service
 from api.services.reddit_service import RedditService
 from core.config.settings import get_settings
 
@@ -86,7 +86,7 @@ class IntegratedTradingSystem:
 
             # Initialize news and social media services
             logger.info("Setting up news and social media feeds...")
-            self.services["news"] = NewsService()
+            self.services["news"] = await create_news_service()
             self.services["reddit"] = RedditService()
 
             # Initialize AI ensemble model
@@ -463,6 +463,12 @@ class IntegratedTradingSystem:
 
             if "ea_server" in self.services:
                 await self.services["ea_server"].stop()
+
+            if "news" in self.services:
+                await self.services["news"].shutdown()
+
+            if "reddit" in self.services:
+                await self.services["reddit"].shutdown()
 
             logger.info("GenX Trading System stopped successfully")
 
