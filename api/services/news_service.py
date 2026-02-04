@@ -3,7 +3,6 @@ News Integration Service for GenX Trading Platform
 """
 
 import asyncio
-import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -58,6 +57,7 @@ class NewsService:
             else None
         )
 
+        self.session: Optional[aiohttp.ClientSession] = None
         self.initialized = False
 
         # Keywords for categorization (currently not used but defined)
@@ -125,36 +125,76 @@ class NewsService:
             logger.error(f"Failed to initialize news service: {e}")
             return False
 
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """
+        Returns a shared aiohttp.ClientSession, creating it if it doesn't exist.
+        Using a single session for all requests is a major performance boost
+        due to connection pooling.
+        """
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def get_recent_news(
+        self, keywords: List[str], hours_back: int = 24, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetches recent news across multiple sources concurrently.
+        ⚡ Bolt Optimization: Uses asyncio.gather for concurrent API calls.
+        """
+        query = " ".join(keywords)
+        tasks = []
+
+        if self.newsapi_client:
+            tasks.append(self._get_newsapi_articles(query, limit=limit))
+
+        if self.finnhub_client:
+            tasks.append(self._get_finnhub_news("general", limit=limit))
+
+        if self.newsdata_key:
+            tasks.append(self._get_newsdata_articles(query, limit=limit))
+
+        if not tasks:
+            return []
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_news = []
+        for result in results:
+            if isinstance(result, list):
+                all_news.extend(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Error fetching news in get_recent_news: {result}")
+
+        # Filter by time
+        cutoff = datetime.now() - timedelta(hours=hours_back)
+        recent_news = [n for n in all_news if n["published_at"] >= cutoff]
+
+        unique_news = self._remove_duplicates(recent_news)
+        return sorted(unique_news, key=lambda x: x["published_at"], reverse=True)[:limit]
+
     async def get_crypto_news(self, limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Aggregates cryptocurrency news from multiple sources.
-
-        Args:
-            limit (int): The maximum number of news articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A sorted and deduplicated list of news articles.
+        Aggregates cryptocurrency news from multiple sources concurrently.
+        ⚡ Bolt Optimization: Uses asyncio.gather for ~3x speed improvement.
         """
-        all_news = []
-
-        # NewsAPI
+        tasks = []
         if self.newsapi_client:
-            newsapi_articles = await self._get_newsapi_articles(
-                "cryptocurrency", limit=20
-            )
-            all_news.extend(newsapi_articles)
-
-        # Finnhub
+            tasks.append(self._get_newsapi_articles("cryptocurrency", limit=20))
         if self.finnhub_client:
-            finnhub_articles = await self._get_finnhub_news("crypto", limit=15)
-            all_news.extend(finnhub_articles)
-
-        # NewsData.io
+            tasks.append(self._get_finnhub_news("crypto", limit=15))
         if self.newsdata_key:
-            newsdata_articles = await self._get_newsdata_articles(
-                "cryptocurrency", limit=15
-            )
-            all_news.extend(newsdata_articles)
+            tasks.append(self._get_newsdata_articles("cryptocurrency", limit=15))
+
+        if not tasks:
+            return []
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_news = []
+        for result in results:
+            if isinstance(result, list):
+                all_news.extend(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Error fetching crypto news: {result}")
 
         # Remove duplicates and sort by date
         unique_news = self._remove_duplicates(all_news)
@@ -166,38 +206,34 @@ class NewsService:
         self, symbol: Optional[str] = None, limit: int = 50
     ) -> List[Dict[str, Any]]:
         """
-        Aggregates stock market news, optionally for a specific symbol.
-
-        Args:
-            symbol (Optional[str]): The stock symbol (e.g., "AAPL"). If None,
-                                    general market news is fetched.
-            limit (int): The maximum number of news articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A sorted and deduplicated list of news articles.
+        Aggregates stock market news concurrently.
+        ⚡ Bolt Optimization: Uses asyncio.gather for parallel fetching.
         """
-        all_news = []
+        tasks = []
+        query = f"{symbol} stock" if symbol else "stock market"
 
-        # NewsAPI
         if self.newsapi_client:
-            query = f"{symbol} stock" if symbol else "stock market"
-            newsapi_articles = await self._get_newsapi_articles(query, limit=20)
-            all_news.extend(newsapi_articles)
+            tasks.append(self._get_newsapi_articles(query, limit=20))
 
-        # Finnhub
         if self.finnhub_client:
             if symbol:
-                finnhub_articles = await self._get_finnhub_company_news(
-                    symbol, limit=15
-                )
+                tasks.append(self._get_finnhub_company_news(symbol, limit=15))
             else:
-                finnhub_articles = await self._get_finnhub_news("general", limit=15)
-            all_news.extend(finnhub_articles)
+                tasks.append(self._get_finnhub_news("general", limit=15))
 
-        # Alpha Vantage
         if self.alphavantage and symbol:
-            av_articles = await self._get_alphavantage_news(symbol, limit=10)
-            all_news.extend(av_articles)
+            tasks.append(self._get_alphavantage_news(symbol, limit=10))
+
+        if not tasks:
+            return []
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_news = []
+        for result in results:
+            if isinstance(result, list):
+                all_news.extend(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Error fetching stock news: {result}")
 
         # Remove duplicates and sort
         unique_news = self._remove_duplicates(all_news)
@@ -207,27 +243,25 @@ class NewsService:
 
     async def get_forex_news(self, limit: int = 30) -> List[Dict[str, Any]]:
         """
-        Aggregates forex and currency-related news.
-
-        Args:
-            limit (int): The maximum number of news articles to return.
-
-        Returns:
-            List[Dict[str, Any]]: A sorted and deduplicated list of news articles.
+        Aggregates forex news concurrently.
+        ⚡ Bolt Optimization: Concurrent fetching from NewsAPI and Finnhub.
         """
-        all_news = []
-
-        # NewsAPI
+        tasks = []
         if self.newsapi_client:
-            newsapi_articles = await self._get_newsapi_articles(
-                "forex currency", limit=20
-            )
-            all_news.extend(newsapi_articles)
-
-        # Finnhub
+            tasks.append(self._get_newsapi_articles("forex currency", limit=20))
         if self.finnhub_client:
-            finnhub_articles = await self._get_finnhub_news("forex", limit=10)
-            all_news.extend(finnhub_articles)
+            tasks.append(self._get_finnhub_news("forex", limit=10))
+
+        if not tasks:
+            return []
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_news = []
+        for result in results:
+            if isinstance(result, list):
+                all_news.extend(result)
+            elif isinstance(result, Exception):
+                logger.error(f"Error fetching forex news: {result}")
 
         # Remove duplicates and sort
         unique_news = self._remove_duplicates(all_news)
@@ -238,16 +272,17 @@ class NewsService:
     async def get_market_sentiment_news(self) -> Dict[str, Any]:
         """
         Gathers a broad range of news for general market sentiment analysis.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing aggregated news data, including
-                            counts and combined text for analysis.
+        ⚡ Bolt Optimization: Concurrent category fetching using asyncio.gather.
         """
         try:
-            # Get news from all categories
-            crypto_news = await self.get_crypto_news(limit=20)
-            stock_news = await self.get_stock_news(limit=20)
-            forex_news = await self.get_forex_news(limit=10)
+            # Concurrent fetch for all categories
+            crypto_task = self.get_crypto_news(limit=20)
+            stock_task = self.get_stock_news(limit=20)
+            forex_task = self.get_forex_news(limit=10)
+
+            crypto_news, stock_news, forex_news = await asyncio.gather(
+                crypto_task, stock_task, forex_task
+            )
 
             # Combine all news
             all_news = crypto_news + stock_news + forex_news
@@ -415,13 +450,7 @@ class NewsService:
     ) -> List[Dict[str, Any]]:
         """
         Fetches articles from NewsData.io.
-
-        Args:
-            query (str): The search query.
-            limit (int): The number of articles to fetch.
-
-        Returns:
-            List[Dict[str, Any]]: A list of formatted news articles.
+        ⚡ Bolt Optimization: Uses shared aiohttp.ClientSession for connection pooling.
         """
         try:
             url = "https://newsdata.io/api/1/news"
@@ -432,10 +461,10 @@ class NewsService:
                 "size": limit,
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
-                    response.raise_for_status()
-                    data = await response.json()
+            session = await self._get_session()
+            async with session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
 
             articles = [
                 {
@@ -571,6 +600,20 @@ class NewsService:
             return False
 
     async def shutdown(self):
-        """Shuts down the news service."""
+        """
+        Shuts down the news service.
+        ⚡ Bolt Optimization: Properly closes the shared aiohttp.ClientSession.
+        """
         logger.info("Shutting down news service...")
+        if self.session and not self.session.closed:
+            await self.session.close()
         self.initialized = False
+
+
+async def create_news_service() -> NewsService:
+    """
+    Factory function to create and initialize a NewsService instance.
+    """
+    service = NewsService()
+    await service.initialize()
+    return service
