@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+
 class MovingAverage:
     """A utility class for calculating different types of moving averages."""
 
@@ -37,6 +38,7 @@ class MovingAverage:
         if not isinstance(prices, pd.Series):
             prices = pd.Series(prices)
         return prices.ewm(span=period, adjust=False).mean()
+
 
 def calculate_sma(prices: pd.Series, period: int) -> pd.Series:
     """

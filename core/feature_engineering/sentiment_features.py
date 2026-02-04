@@ -3,10 +3,12 @@ Sentiment Features for GenX FX Trading System
 Features related to market sentiment and news analysis
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
 
 class SentimentFeatures:
     """
@@ -40,31 +42,31 @@ class SentimentFeatures:
         """
         if df.empty:
             return df
-            
+
         features_df = df.copy()
-        
+
         try:
             # Market sentiment features
             features_df = self._add_market_sentiment_features(features_df)
-            
+
             # News sentiment features (simulated)
             features_df = self._add_news_sentiment_features(features_df, symbol)
-            
+
             # Social media sentiment (simulated)
             features_df = self._add_social_sentiment_features(features_df, symbol)
-            
+
             # Fear & Greed indicators
             features_df = self._add_fear_greed_features(features_df)
-            
+
             # Fill NaN values
-            features_df = features_df.fillna(method='ffill').fillna(0)
-            
+            features_df = features_df.fillna(method="ffill").fillna(0)
+
         except Exception as e:
             print(f"Warning: Error generating sentiment features: {e}")
             return df
-            
+
         return features_df
-    
+
     def _add_market_sentiment_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds market sentiment indicators based on price action.
@@ -88,8 +90,7 @@ class SentimentFeatures:
 
         # Volatility sentiment (high volatility suggests uncertainty)
         df["volatility_sentiment"] = (
-            df["Close"].rolling(window=20).std()
-            / df["Close"].rolling(window=20).mean()
+            df["Close"].rolling(window=20).std() / df["Close"].rolling(window=20).mean()
         )
         df["uncertainty_index"] = (
             df["volatility_sentiment"]
@@ -97,9 +98,9 @@ class SentimentFeatures:
         ) / df["volatility_sentiment"].rolling(window=50).std()
 
         # Price position sentiment
-        price_range = df["High"].rolling(window=20).max() - df["Low"].rolling(
-            window=20
-        ).min()
+        price_range = (
+            df["High"].rolling(window=20).max() - df["Low"].rolling(window=20).min()
+        )
         df["price_position"] = (
             df["Close"] - df["Low"].rolling(window=20).min()
         ) / price_range
@@ -108,7 +109,7 @@ class SentimentFeatures:
         )
 
         return df
-    
+
     def _add_news_sentiment_features(
         self, df: pd.DataFrame, symbol: Optional[str] = None
     ) -> pd.DataFrame:
@@ -131,9 +132,9 @@ class SentimentFeatures:
         )
 
         # News frequency (estimated from volatility spikes)
-        df["volatility_spike"] = (
-            df["news_impact"] > df["news_impact"].rolling(window=20).quantile(0.8)
-        )
+        df["volatility_spike"] = df["news_impact"] > df["news_impact"].rolling(
+            window=20
+        ).quantile(0.8)
         df["news_frequency"] = df["volatility_spike"].rolling(window=10).sum()
 
         # Economic calendar impact (simulated)
@@ -145,7 +146,7 @@ class SentimentFeatures:
             df["calendar_impact"] = 0
 
         return df
-    
+
     def _add_social_sentiment_features(
         self, df: pd.DataFrame, symbol: Optional[str] = None
     ) -> pd.DataFrame:
@@ -180,7 +181,7 @@ class SentimentFeatures:
         )
 
         return df
-    
+
     def _add_fear_greed_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds features that act as proxies for fear and greed in the market.
@@ -213,7 +214,7 @@ class SentimentFeatures:
         )
 
         return df
-    
+
     def get_sentiment_summary(self, df: pd.DataFrame) -> Dict[str, float]:
         """
         Gets a summary of the current sentiment based on the latest data point.
@@ -226,28 +227,32 @@ class SentimentFeatures:
         """
         if df.empty or len(df) < 5:
             return {}
-            
+
         try:
             latest = df.iloc[-1]
             recent = df.tail(5)
-            
+
             summary = {
-                'overall_sentiment': latest.get('social_trend', 0),
-                'sentiment_strength': latest.get('sentiment_strength', 0),
-                'fear_level': latest.get('fear_index', 50),
-                'greed_level': latest.get('greed_index', 50),
-                'news_impact': latest.get('news_impact', 0),
-                'social_momentum': latest.get('social_momentum', 0),
-                'market_stress': latest.get('stress_indicator', 0),
-                'sentiment_trend': recent['social_trend'].mean() if 'social_trend' in recent.columns else 0
+                "overall_sentiment": latest.get("social_trend", 0),
+                "sentiment_strength": latest.get("sentiment_strength", 0),
+                "fear_level": latest.get("fear_index", 50),
+                "greed_level": latest.get("greed_index", 50),
+                "news_impact": latest.get("news_impact", 0),
+                "social_momentum": latest.get("social_momentum", 0),
+                "market_stress": latest.get("stress_indicator", 0),
+                "sentiment_trend": (
+                    recent["social_trend"].mean()
+                    if "social_trend" in recent.columns
+                    else 0
+                ),
             }
-            
+
             return summary
-            
+
         except Exception as e:
             print(f"Warning: Error calculating sentiment summary: {e}")
             return {}
-    
+
     def get_feature_names(self) -> List[str]:
         """
         Returns a list of feature names generated by this class.
@@ -256,13 +261,31 @@ class SentimentFeatures:
             List[str]: A list of the names of the feature columns.
         """
         return [
-            "bullish_candles", "bearish_candles", "bull_bear_ratio",
-            "momentum_sentiment", "sentiment_strength", "volatility_sentiment",
-            "uncertainty_index", "price_position", "sentiment_extreme",
-            "news_impact", "news_sentiment", "news_frequency", "calendar_impact",
-            "twitter_sentiment", "twitter_volume", "reddit_sentiment",
-            "reddit_mentions", "social_trend", "social_momentum",
-            "influencer_sentiment", "fear_index", "greed_index",
-            "put_call_ratio", "stress_indicator", "euphoria_indicator",
-            "sentiment_oscillator", "sentiment_extreme_flag",
+            "bullish_candles",
+            "bearish_candles",
+            "bull_bear_ratio",
+            "momentum_sentiment",
+            "sentiment_strength",
+            "volatility_sentiment",
+            "uncertainty_index",
+            "price_position",
+            "sentiment_extreme",
+            "news_impact",
+            "news_sentiment",
+            "news_frequency",
+            "calendar_impact",
+            "twitter_sentiment",
+            "twitter_volume",
+            "reddit_sentiment",
+            "reddit_mentions",
+            "social_trend",
+            "social_momentum",
+            "influencer_sentiment",
+            "fear_index",
+            "greed_index",
+            "put_call_ratio",
+            "stress_indicator",
+            "euphoria_indicator",
+            "sentiment_oscillator",
+            "sentiment_extreme_flag",
         ]

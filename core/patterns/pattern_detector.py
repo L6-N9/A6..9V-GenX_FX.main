@@ -2,9 +2,11 @@
 Pattern Detection for Trading
 """
 
-import pandas as pd
+from typing import Any, Dict
+
 import numpy as np
-from typing import Dict, Any
+import pandas as pd
+
 
 class PatternDetector:
     """
@@ -33,7 +35,7 @@ class PatternDetector:
             "doji": self._detect_doji(data),
         }
         return patterns
-    
+
     def _detect_bullish_engulfing(self, data: pd.DataFrame) -> pd.Series:
         """
         Detects the Bullish Engulfing candlestick pattern.
@@ -55,7 +57,7 @@ class PatternDetector:
 
         pattern = prev_is_bearish & curr_is_bullish & engulfs
         return pattern.astype(int)
-    
+
     def _detect_bearish_engulfing(self, data: pd.DataFrame) -> pd.Series:
         """
         Detects the Bearish Engulfing candlestick pattern.
@@ -77,7 +79,7 @@ class PatternDetector:
 
         pattern = prev_is_bullish & curr_is_bearish & engulfs
         return pattern.astype(int)
-    
+
     def _detect_doji(self, data: pd.DataFrame) -> pd.Series:
         """
         Detects a Doji candlestick pattern.

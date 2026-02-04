@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { setupVite, serveStatic } from './vite.js';
 import { registerRoutes } from './routes.js';
-import { createServer } from 'http';
+import { createServer, request } from 'http';
 import { WebSocketServer } from 'ws';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,6 +24,31 @@ app.use((req, res, next) => {
     console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - ${res.statusCode} - ${duration}ms`);
   });
   next();
+});
+
+// Simple proxy for /api requests to Python backend
+app.use(['/api/v1', '/trading-pairs'], (req, res) => {
+  const targetUrl = `http://127.0.0.1:8000${req.originalUrl}`;
+  const options = {
+    method: req.method,
+    headers: { ...req.headers },
+  };
+  // remove host header to avoid issues
+  delete options.headers.host;
+
+  const proxyReq = request(targetUrl, options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode || 500, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('Proxy error:', err);
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Bad Gateway', details: err.message });
+    }
+  });
+
+  req.pipe(proxyReq);
 });
 
 // CORS configuration
@@ -96,7 +121,7 @@ wss.on('connection', (ws, req) => {
 
 // Setup Vite in development or serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  serveStatic(app, join(__dirname, '..', 'dist', 'public'));
+  serveStatic(app, join(__dirname, '../../client/dist'));
 } else {
   await setupVite(app, server);
 }
@@ -111,7 +136,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 handler
-app.use('*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     error: 'Not found',
     path: req.originalUrl

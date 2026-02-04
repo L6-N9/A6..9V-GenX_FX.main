@@ -3,16 +3,18 @@ Enhanced WebSocket Service for GenX Trading Platform
 """
 
 import asyncio
-import websockets
 import json
 import logging
-from typing import Dict, Any, List, Optional, Callable
 import os
-from datetime import datetime
-import aiohttp
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
+
+import aiohttp
+import websockets
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class MarketData:
@@ -61,33 +63,31 @@ class WebSocketService:
         self.connections: Dict[str, websockets.client.WebSocketClientProtocol] = {}
         self.subscribers: Dict[str, set] = {}
         self.running = False
-        self.reconnect_interval = int(
-            os.getenv("WEBSOCKET_RECONNECT_INTERVAL", "5")
-        )
+        self.reconnect_interval = int(os.getenv("WEBSOCKET_RECONNECT_INTERVAL", "5"))
         self.max_retries = int(os.getenv("MAX_WEBSOCKET_RETRIES", "10"))
-        
+
         # Exchange endpoints
         self.exchanges = {
-            'bybit': {
-                'url': 'wss://stream.bybit.com/v5/public/spot',
-                'subscribe_format': self._bybit_subscribe_format,
-                'parser': self._parse_bybit_data
+            "bybit": {
+                "url": "wss://stream.bybit.com/v5/public/spot",
+                "subscribe_format": self._bybit_subscribe_format,
+                "parser": self._parse_bybit_data,
             },
-            'binance': {
-                'url': 'wss://stream.binance.com:9443/ws/',
-                'subscribe_format': self._binance_subscribe_format,
-                'parser': self._parse_binance_data
+            "binance": {
+                "url": "wss://stream.binance.com:9443/ws/",
+                "subscribe_format": self._binance_subscribe_format,
+                "parser": self._parse_binance_data,
             },
-            'coinbase': {
-                'url': 'wss://ws-feed.pro.coinbase.com',
-                'subscribe_format': self._coinbase_subscribe_format,
-                'parser': self._parse_coinbase_data
-            }
+            "coinbase": {
+                "url": "wss://ws-feed.pro.coinbase.com",
+                "subscribe_format": self._coinbase_subscribe_format,
+                "parser": self._parse_coinbase_data,
+            },
         }
-        
+
         # Data callbacks
         self.data_callbacks = []
-        
+
     async def initialize(self) -> bool:
         """
         Initializes the WebSocket service.
@@ -112,7 +112,7 @@ class WebSocketService:
         except Exception as e:
             logger.error(f"Failed to initialize WebSocket service: {e}")
             return False
-    
+
     async def subscribe_to_symbol(
         self, exchange: str, symbol: str, callback: Optional[Callable] = None
     ):
@@ -147,7 +147,7 @@ class WebSocketService:
 
         except Exception as e:
             logger.error(f"Failed to subscribe to {symbol} on {exchange}: {e}")
-    
+
     async def unsubscribe_from_symbol(self, exchange: str, symbol: str):
         """
         Unsubscribes from real-time data for a symbol.
@@ -168,7 +168,7 @@ class WebSocketService:
 
         except Exception as e:
             logger.error(f"Failed to unsubscribe from {symbol} on {exchange}: {e}")
-    
+
     def add_data_callback(self, callback: Callable):
         """
         Adds a callback function to be invoked with every market data update.
@@ -177,7 +177,7 @@ class WebSocketService:
             callback (Callable): The function to call with new MarketData objects.
         """
         self.data_callbacks.append(callback)
-    
+
     async def _maintain_connection(self, exchange: str):
         """
         Maintains a persistent WebSocket connection to an exchange.
@@ -226,7 +226,7 @@ class WebSocketService:
 
         if retry_count >= self.max_retries:
             logger.error(f"Max retries exceeded for {exchange}. Giving up.")
-    
+
     async def _listen_for_messages(
         self, websocket: websockets.client.WebSocketClientProtocol, exchange: str
     ):
@@ -272,10 +272,8 @@ class WebSocketService:
             logger.debug(f"Sent subscription for {symbol} to {exchange}")
 
         except Exception as e:
-            logger.error(
-                f"Failed to send subscription for {symbol} to {exchange}: {e}"
-            )
-    
+            logger.error(f"Failed to send subscription for {symbol} to {exchange}: {e}")
+
     async def _send_unsubscription(self, exchange: str, symbol: str):
         """
         Sends an unsubscription message to the specified exchange.
@@ -305,11 +303,11 @@ class WebSocketService:
             logger.error(
                 f"Failed to send unsubscription for {symbol} to {exchange}: {e}"
             )
-    
+
     def _bybit_subscribe_format(self, symbol: str) -> Dict[str, Any]:
         """Formats a subscription message for the Bybit exchange."""
         return {"op": "subscribe", "args": [f"publicTrade.{symbol}"]}
-    
+
     def _binance_subscribe_format(self, symbol: str) -> Dict[str, Any]:
         """Formats a subscription message for the Binance exchange."""
         return {
@@ -317,7 +315,7 @@ class WebSocketService:
             "params": [f"{symbol.lower()}@trade"],
             "id": 1,
         }
-    
+
     def _coinbase_subscribe_format(self, symbol: str) -> Dict[str, Any]:
         """Formats a subscription message for the Coinbase exchange."""
         return {
@@ -325,7 +323,7 @@ class WebSocketService:
             "product_ids": [symbol],
             "channels": ["matches"],
         }
-    
+
     def _parse_bybit_data(self, data: Dict[str, Any]) -> Optional[MarketData]:
         """
         Parses incoming WebSocket data from Bybit.
@@ -350,7 +348,7 @@ class WebSocketService:
         except (KeyError, IndexError, TypeError, ValueError) as e:
             logger.error(f"Failed to parse Bybit data: {e} | Data: {data}")
         return None
-    
+
     def _parse_binance_data(self, data: Dict[str, Any]) -> Optional[MarketData]:
         """
         Parses incoming WebSocket data from Binance.
@@ -372,7 +370,7 @@ class WebSocketService:
         except (KeyError, TypeError, ValueError) as e:
             logger.error(f"Failed to parse Binance data: {e} | Data: {data}")
         return None
-    
+
     def _parse_coinbase_data(self, data: Dict[str, Any]) -> Optional[MarketData]:
         """
         Parses incoming WebSocket data from Coinbase.
@@ -389,12 +387,14 @@ class WebSocketService:
                     symbol=data["product_id"],
                     price=float(data["price"]),
                     volume=float(data["size"]),
-                    timestamp=datetime.fromisoformat(data["time"].replace("Z", "+00:00")),
+                    timestamp=datetime.fromisoformat(
+                        data["time"].replace("Z", "+00:00")
+                    ),
                 )
         except (KeyError, TypeError, ValueError) as e:
             logger.error(f"Failed to parse Coinbase data: {e} | Data: {data}")
         return None
-    
+
     async def get_connection_status(self) -> Dict[str, Any]:
         """
         Gets the current status of all WebSocket connections.
@@ -417,7 +417,7 @@ class WebSocketService:
             "total_callbacks": len(self.data_callbacks),
             "running": self.running,
         }
-    
+
     async def health_check(self) -> bool:
         """
         Performs a health check on the WebSocket service.
@@ -431,7 +431,7 @@ class WebSocketService:
         except Exception as e:
             logger.error(f"WebSocket health check failed: {e}")
             return False
-    
+
     async def shutdown(self):
         """Shuts down the WebSocket service and closes all connections."""
         logger.info("Shutting down WebSocket service...")

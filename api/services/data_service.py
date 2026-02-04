@@ -1,9 +1,12 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+import random
+from typing import Any, Dict, Optional
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
 
 class DataService:
     """
@@ -29,12 +32,15 @@ class DataService:
         logger.info("Initializing Data Service...")
         self.initialized = True
 
-    async def get_realtime_data(self, symbol: str) -> Optional[pd.DataFrame]:
+    async def get_realtime_data(
+        self, symbol: str, timeframe: str = "1h"
+    ) -> Optional[pd.DataFrame]:
         """
         Retrieves real-time market data for a given symbol.
 
         Args:
             symbol (str): The trading symbol to fetch data for.
+            timeframe (str): The timeframe for the data (e.g., '1h', '4h').
 
         Returns:
             Optional[pd.DataFrame]: A DataFrame containing the latest market data,
@@ -69,27 +75,23 @@ class DataService:
         return "healthy" if self.initialized else "unhealthy"
 
     async def get_batch_realtime_data(
-        self, symbols: list[str]
+        self, symbols: list[str], timeframe: str = "1h"
     ) -> dict[str, pd.DataFrame]:
         """
-        ⚡ Bolt: Refactored to simulate a true batch database query.
-        Retrieves real-time market data for a list of symbols in a single batch operation
-        to avoid the N+1 anti-pattern. This is significantly more efficient than
-        making one request per symbol.
-
+        Retrieves real-time market data for a batch of symbols.
         Args:
-            symbols (list[str]): The list of trading symbols to fetch data for.
-
+            symbols (list[str]): A list of trading symbols.
+            timeframe (str): The timeframe for the data (e.g., '1h', '4h').
         Returns:
-            dict[str, pd.DataFrame]: A dictionary mapping each symbol to its data.
+            dict[str, pd.DataFrame]: A dictionary where keys are symbols
+                                     and values are DataFrames with market data.
         """
-        if not self.initialized:
-            raise ValueError("Data Service not initialized")
-
-        # ⚡ Bolt: In a real-world scenario, this would be a single, efficient
-        # database query or API call for all symbols, not a loop.
-        # This mock implementation simulates that behavior.
-        await asyncio.sleep(0.01)  # Simulate network/database latency
+        # --- Performance Optimization: True Batch Operation ---
+        # Instead of making N individual calls for N symbols (an N+1 problem),
+        # this implementation simulates a true batch API call. It processes all
+        # symbols in a single, efficient operation, significantly reducing
+        # overhead and latency, especially for a large number of symbols.
+        await asyncio.sleep(0.01)  # Simulate network latency for a single batch call
 
         mock_data = {
             "timestamp": [pd.Timestamp.now()],
@@ -99,7 +101,16 @@ class DataService:
             "close": [103.0],
             "volume": [1000.0],
         }
-        return {symbol: pd.DataFrame(mock_data) for symbol in symbols}
+
+        # Simulate partial failures: In a real batch API, some symbols might not
+        # return data. This logic ensures the mock behaves realistically.
+        results = {}
+        for symbol in symbols:
+            # ~90% success rate for finding data for a symbol
+            if random.random() > 0.1:
+                results[symbol] = pd.DataFrame(mock_data)
+
+        return results
 
     async def start_data_feed(self):
         """

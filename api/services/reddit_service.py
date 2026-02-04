@@ -4,13 +4,15 @@ Reddit Integration Service for GenX Trading Platform
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
-import praw
 import os
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+import praw
 
 logger = logging.getLogger(__name__)
+
 
 class RedditService:
     """
@@ -41,14 +43,12 @@ class RedditService:
         self.password = os.getenv("REDDIT_PASSWORD")
         self.user_agent = os.getenv("REDDIT_USER_AGENT", "GenX-Trading-Bot/1.0")
 
-        if not all(
-            [self.client_id, self.client_secret, self.username, self.password]
-        ):
+        if not all([self.client_id, self.client_secret, self.username, self.password]):
             raise ValueError("Reddit credentials are not properly configured")
 
         self.reddit: Optional[praw.Reddit] = None
         self.initialized = False
-        
+
         # Trading-related subreddits
         self.trading_subreddits = [
             "wallstreetbets",
@@ -62,20 +62,43 @@ class RedditService:
             "ValueInvesting",
             "options",
             "Forex",
-            "pennystocks"
+            "pennystocks",
         ]
-        
+
         # Keywords for filtering relevant posts
         self.crypto_keywords = [
-            "bitcoin", "btc", "ethereum", "eth", "crypto", "blockchain",
-            "defi", "nft", "altcoin", "hodl", "moon", "dip", "pump", "dump"
+            "bitcoin",
+            "btc",
+            "ethereum",
+            "eth",
+            "crypto",
+            "blockchain",
+            "defi",
+            "nft",
+            "altcoin",
+            "hodl",
+            "moon",
+            "dip",
+            "pump",
+            "dump",
         ]
-        
+
         self.stock_keywords = [
-            "spy", "qqq", "tsla", "aapl", "msft", "nvda", "earnings",
-            "bull", "bear", "calls", "puts", "options", "squeeze"
+            "spy",
+            "qqq",
+            "tsla",
+            "aapl",
+            "msft",
+            "nvda",
+            "earnings",
+            "bull",
+            "bear",
+            "calls",
+            "puts",
+            "options",
+            "squeeze",
         ]
-    
+
     async def initialize(self) -> bool:
         """
         Initializes the Reddit API connection using PRAW.
@@ -106,7 +129,7 @@ class RedditService:
         except Exception as e:
             logger.error(f"Failed to initialize Reddit service: {e}")
             return False
-    
+
     async def get_trending_posts(
         self, subreddit_name: str, limit: int = 25
     ) -> List[Dict[str, Any]]:
@@ -152,7 +175,7 @@ class RedditService:
         except Exception as e:
             logger.error(f"Error fetching posts from r/{subreddit_name}: {e}")
             return []
-    
+
     async def get_crypto_sentiment(self) -> Dict[str, Any]:
         """
         Aggregates and analyzes sentiment for cryptocurrency-related subreddits.
@@ -200,7 +223,7 @@ class RedditService:
                 "top_posts": [],
                 "timestamp": datetime.now(),
             }
-    
+
     async def get_stock_sentiment(self) -> Dict[str, Any]:
         """
         Aggregates and analyzes sentiment for stock market-related subreddits.
@@ -215,16 +238,12 @@ class RedditService:
                 "stocks",
                 "SecurityAnalysis",
             ]
-            tasks = [
-                self.get_trending_posts(sub, limit=10) for sub in stock_subreddits
-            ]
+            tasks = [self.get_trending_posts(sub, limit=10) for sub in stock_subreddits]
             results = await asyncio.gather(*tasks)
             all_posts = [post for result in results for post in result]
 
             # Filter for stock-related posts
-            stock_posts = self._filter_posts_by_keywords(
-                all_posts, self.stock_keywords
-            )
+            stock_posts = self._filter_posts_by_keywords(all_posts, self.stock_keywords)
 
             # Analyze sentiment
             sentiment_data = self._analyze_post_sentiment(stock_posts)
@@ -248,7 +267,7 @@ class RedditService:
                 "top_posts": [],
                 "timestamp": datetime.now(),
             }
-    
+
     async def get_wallstreetbets_sentiment(self) -> Dict[str, Any]:
         """
         Performs a specific analysis of the r/wallstreetbets subreddit.
@@ -291,7 +310,7 @@ class RedditService:
                 "top_posts": [],
                 "timestamp": datetime.now(),
             }
-    
+
     def _filter_posts_by_keywords(
         self, posts: List[Dict[str, Any]], keywords: List[str]
     ) -> List[Dict[str, Any]]:
@@ -314,7 +333,7 @@ class RedditService:
                 filtered_posts.append(post)
 
         return filtered_posts
-    
+
     def _analyze_post_sentiment(self, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Performs a simple sentiment analysis on a list of posts.
@@ -330,32 +349,32 @@ class RedditService:
         """
         if not posts:
             return {"sentiment_score": 0, "avg_score": 0, "trending_topics": []}
-        
+
         # Simple sentiment based on score and upvote ratio
         total_sentiment = 0
         total_score = 0
-        
+
         for post in posts:
             # Calculate sentiment based on score and upvote ratio
             score_weight = min(post["score"], 1000) / 1000  # Normalize score
             ratio_weight = post["upvote_ratio"]
-            
+
             post_sentiment = (score_weight + ratio_weight) / 2
             total_sentiment += post_sentiment
             total_score += post["score"]
-        
+
         avg_sentiment = total_sentiment / len(posts)
         avg_score = total_score / len(posts)
-        
+
         # Extract trending topics (simplified)
         trending_topics = self._extract_trending_topics(posts)
-        
+
         return {
             "sentiment_score": avg_sentiment,
             "avg_score": avg_score,
-            "trending_topics": trending_topics
+            "trending_topics": trending_topics,
         }
-    
+
     def _extract_tickers(self, posts: List[Dict[str, Any]]) -> Dict[str, int]:
         """
         Extracts potential stock tickers from a list of posts.
@@ -371,25 +390,64 @@ class RedditService:
 
         # Common words to exclude to reduce false positives
         exclude_words = {
-            "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER",
-            "WAS", "ONE", "OUR", "HAD", "HAS", "HAVE", "HIS", "HOW", "ITS", "MAY",
-            "NEW", "NOW", "OLD", "SEE", "TWO", "WAY", "WHO", "BOY", "DID", "GET",
-            "HIM", "OWN", "SAY", "SHE", "TOO", "USE", "WSB", "CEO", "IPO", "SEC",
-            "FDA", "USA", "ETF", "YOLO",
+            "THE",
+            "AND",
+            "FOR",
+            "ARE",
+            "BUT",
+            "NOT",
+            "YOU",
+            "ALL",
+            "CAN",
+            "HER",
+            "WAS",
+            "ONE",
+            "OUR",
+            "HAD",
+            "HAS",
+            "HAVE",
+            "HIS",
+            "HOW",
+            "ITS",
+            "MAY",
+            "NEW",
+            "NOW",
+            "OLD",
+            "SEE",
+            "TWO",
+            "WAY",
+            "WHO",
+            "BOY",
+            "DID",
+            "GET",
+            "HIM",
+            "OWN",
+            "SAY",
+            "SHE",
+            "TOO",
+            "USE",
+            "WSB",
+            "CEO",
+            "IPO",
+            "SEC",
+            "FDA",
+            "USA",
+            "ETF",
+            "YOLO",
         }
-        
+
         for post in posts:
             text = f"{post['title']} {post['selftext']}"
             tickers = re.findall(ticker_pattern, text)
-            
+
             for ticker in tickers:
                 if ticker not in exclude_words and len(ticker) <= 5:
                     ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
-        
+
         # Sort by frequency and return top 10
         sorted_tickers = sorted(ticker_counts.items(), key=lambda x: x[1], reverse=True)
         return dict(sorted_tickers[:10])
-    
+
     def _extract_trending_topics(self, posts: List[Dict[str, Any]]) -> List[str]:
         """
         Performs a simple keyword extraction to find trending topics.
@@ -411,7 +469,7 @@ class RedditService:
         # Sort by frequency and return top 5
         sorted_keywords = sorted(keywords.items(), key=lambda x: x[1], reverse=True)
         return [keyword for keyword, count in sorted_keywords[:5]]
-    
+
     def _count_emojis(self, posts: List[Dict[str, Any]], emoji: str) -> int:
         """
         Counts the occurrences of a specific emoji in the posts.
@@ -428,7 +486,7 @@ class RedditService:
             text = f"{post['title']} {post['selftext']}"
             count += text.count(emoji)
         return count
-    
+
     async def health_check(self) -> bool:
         """
         Checks if the Reddit service is healthy and responsive.
@@ -449,7 +507,7 @@ class RedditService:
         except Exception as e:
             logger.error(f"Reddit health check failed: {e}")
             return False
-    
+
     async def shutdown(self):
         """Shuts down the Reddit service."""
         logger.info("Shutting down Reddit service...")

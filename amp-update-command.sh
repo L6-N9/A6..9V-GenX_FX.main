@@ -3,6 +3,11 @@
 # GenX Trading Platform - Complete AMP Update Command
 # This script updates the project with all new integrations
 
+# Define amp function to use local python wrapper
+amp() {
+    python3 amp_wrapper.py "$@"
+}
+
 echo "🚀 Starting GenX Trading Platform AMP Update..."
 
 # Main update command
@@ -47,25 +52,25 @@ echo "✅ Main AMP update complete!"
 echo "📦 Installing AMP plugins..."
 
 # Gemini AI Integration
-amp plugin install gemini-integration \
+amp plugin-install gemini-integration \
   --source genx-trading \
   --enable-service gemini_service \
   --description "Google Gemini AI integration for market analysis"
 
 # Reddit Signals
-amp plugin install reddit-signals \
+amp plugin-install reddit-signals \
   --source genx-trading \
   --enable-service reddit_service \
   --description "Reddit integration for social sentiment analysis"
 
 # News Aggregator
-amp plugin install news-aggregator \
+amp plugin-install news-aggregator \
   --source genx-trading \
   --enable-service news_service \
   --description "Multi-source news aggregation for market analysis"
 
 # WebSocket Streams
-amp plugin install websocket-streams \
+amp plugin-install websocket-streams \
   --source genx-trading \
   --enable-service websocket_service \
   --description "Multi-exchange WebSocket streams for real-time data"
@@ -76,19 +81,19 @@ echo "🎉 All AMP plugins installed successfully!"
 echo "⚙️ Configuring services..."
 
 # Update API configuration
-amp config set \
+amp config-set \
   --api-provider gemini \
-  --enable-sentiment-analysis true \
-  --enable-social-signals true \
-  --enable-news-feeds true \
-  --enable-websocket-streams true
+  --enable-sentiment-analysis \
+  --enable-social-signals \
+  --enable-news-feeds \
+  --enable-websocket-streams
 
 # Set up service dependencies
-amp service enable \
-  --service gemini_service \
-  --service reddit_service \
-  --service news_service \
-  --service websocket_service
+amp service-enable \
+  gemini_service \
+  reddit_service \
+  news_service \
+  websocket_service
 
 echo "🔧 Service configuration complete!"
 

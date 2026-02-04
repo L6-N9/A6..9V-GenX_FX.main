@@ -5,31 +5,37 @@ Combines multiple ML models for robust trading signal generation
 
 import asyncio
 import logging
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
-import joblib
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import joblib
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import xgboost as xgb
 
 # ML imports
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    precision_recall_fscore_support,
+)
 from sklearn.model_selection import TimeSeriesSplit, cross_val_score
-from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.metrics import classification_report, accuracy_score, precision_recall_fscore_support
-import xgboost as xgb
-import lightgbm as lgb
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.svm import SVC
 
-from core.feature_engineering.technical_features import TechnicalFeatureEngine
 from core.feature_engineering.market_microstructure import MarketMicrostructureFeatures
 from core.feature_engineering.sentiment_features import SentimentFeatures
+from core.feature_engineering.technical_features import TechnicalFeatureEngine
 from utils.model_validation import ModelValidator
 
 logger = logging.getLogger(__name__)
+
 
 class EnsemblePredictor:
     """
@@ -78,7 +84,7 @@ class EnsemblePredictor:
 
         self.is_initialized = False
         logger.info("Ensemble Predictor initialized")
-    
+
     async def initialize(self):
         """
         Initializes the ensemble predictor and its components.
@@ -105,7 +111,7 @@ class EnsemblePredictor:
         except Exception as e:
             logger.error(f"Error initializing ensemble predictor: {e}")
             raise
-    
+
     async def predict(
         self,
         symbol: str,
@@ -127,36 +133,40 @@ class EnsemblePredictor:
         """
         if not self.is_initialized:
             await self.initialize()
-        
+
         try:
             # Generate features
             features = await self._generate_features(symbol, data, multi_timeframe_data)
-            
+
             if features is None or len(features) == 0:
                 return self._get_default_prediction()
-            
+
             # Get predictions from all models
             model_predictions = await self._get_model_predictions(symbol, features)
-            
+
             # Calculate ensemble prediction
             ensemble_result = self._calculate_ensemble_prediction(model_predictions)
-            
+
             # Add metadata
-            ensemble_result.update({
-                'symbol': symbol,
-                'timestamp': datetime.now(),
-                'feature_count': len(features),
-                'model_count': len(model_predictions),
-                'model_scores': model_predictions
-            })
-            
-            logger.debug(f"Generated prediction for {symbol}: confidence={ensemble_result['confidence']:.3f}")
+            ensemble_result.update(
+                {
+                    "symbol": symbol,
+                    "timestamp": datetime.now(),
+                    "feature_count": len(features),
+                    "model_count": len(model_predictions),
+                    "model_scores": model_predictions,
+                }
+            )
+
+            logger.debug(
+                f"Generated prediction for {symbol}: confidence={ensemble_result['confidence']:.3f}"
+            )
             return ensemble_result
-            
+
         except Exception as e:
             logger.error(f"Error generating prediction for {symbol}: {e}")
             return self._get_default_prediction()
-    
+
     async def _generate_features(
         self,
         symbol: str,
@@ -181,8 +191,10 @@ class EnsemblePredictor:
 
             # Generate features from different engines
             technical_df = self.feature_engine.generate_features(data)
-            microstructure_df = self.microstructure_engine.generate_features(technical_df)
-            
+            microstructure_df = self.microstructure_engine.generate_features(
+                technical_df
+            )
+
             # For prediction, we use the latest row
             latest_features = microstructure_df.iloc[-1]
 
@@ -200,12 +212,14 @@ class EnsemblePredictor:
 
             # Sentiment features
             try:
-                sentiment_features = await self.sentiment_engine.get_sentiment_summary(data)
+                sentiment_features = await self.sentiment_engine.get_sentiment_summary(
+                    data
+                )
                 # Convert dict to list of features
                 features.extend(list(sentiment_features.values()))
             except Exception:
                 # Sentiment features are optional
-                features.extend([0.0] * 8) # Placeholder for 8 sentiment features
+                features.extend([0.0] * 8)  # Placeholder for 8 sentiment features
 
             # Time-based features
             time_features = self._generate_time_features(data.index[-1])
@@ -216,7 +230,7 @@ class EnsemblePredictor:
         except Exception as e:
             logger.error(f"Error generating features for {symbol}: {e}")
             return None
-    
+
     async def _generate_multi_timeframe_features(
         self, multi_timeframe_data: Dict[str, pd.DataFrame]
     ) -> List[float]:
@@ -234,31 +248,44 @@ class EnsemblePredictor:
 
         # Standard timeframes to analyze
         timeframes = ["M15", "H1", "H4", "D1"]
-        
+
         for tf in timeframes:
             if tf in multi_timeframe_data:
                 data = multi_timeframe_data[tf]
                 if len(data) >= 20:
                     # Trend features
-                    sma_20 = data['close'].rolling(20).mean().iloc[-1]
-                    sma_50 = data['close'].rolling(50).mean().iloc[-1] if len(data) >= 50 else sma_20
-                    current_price = data['close'].iloc[-1]
-                    
+                    sma_20 = data["close"].rolling(20).mean().iloc[-1]
+                    sma_50 = (
+                        data["close"].rolling(50).mean().iloc[-1]
+                        if len(data) >= 50
+                        else sma_20
+                    )
+                    current_price = data["close"].iloc[-1]
+
                     trend_strength = (current_price - sma_20) / sma_20
                     trend_consistency = 1.0 if sma_20 > sma_50 else -1.0
-                    
+
                     # Volatility features
-                    volatility = data['close'].rolling(20).std().iloc[-1] / current_price
-                    
+                    volatility = (
+                        data["close"].rolling(20).std().iloc[-1] / current_price
+                    )
+
                     # Momentum features
-                    roc = (current_price - data['close'].iloc[-10]) / data['close'].iloc[-10] if len(data) >= 10 else 0
-                    
-                    features.extend([trend_strength, trend_consistency, volatility, roc])
+                    roc = (
+                        (current_price - data["close"].iloc[-10])
+                        / data["close"].iloc[-10]
+                        if len(data) >= 10
+                        else 0
+                    )
+
+                    features.extend(
+                        [trend_strength, trend_consistency, volatility, roc]
+                    )
                 else:
                     features.extend([0.0, 0.0, 0.0, 0.0])
-        
+
         return features
-    
+
     def _generate_time_features(self, timestamp: datetime) -> List[float]:
         """
         Generates time-based features from a timestamp.
@@ -293,7 +320,7 @@ class EnsemblePredictor:
         features.extend([london_session, ny_session, asian_session, overlap_session])
 
         return features
-    
+
     async def _get_model_predictions(
         self, symbol: str, features: np.ndarray
     ) -> Dict[str, float]:
@@ -312,39 +339,43 @@ class EnsemblePredictor:
         # Ensure models exist for this symbol
         if symbol not in self.models:
             await self._create_models_for_symbol(symbol)
-        
+
         symbol_models = self.models[symbol]
         symbol_scalers = self.scalers[symbol]
-        
+
         for model_name, model in symbol_models.items():
             try:
                 # Scale features
                 scaler = symbol_scalers[model_name]
                 scaled_features = scaler.transform(features)
-                
+
                 # Get prediction
-                if hasattr(model, 'predict_proba'):
+                if hasattr(model, "predict_proba"):
                     # Classification models
                     proba = model.predict_proba(scaled_features)[0]
                     # Convert to direction score (-1 to 1)
                     if len(proba) >= 2:
-                        direction_score = proba[1] - proba[0]  # Positive for buy, negative for sell
+                        direction_score = (
+                            proba[1] - proba[0]
+                        )  # Positive for buy, negative for sell
                     else:
                         direction_score = 0.0
                 else:
                     # Regression models
                     direction_score = model.predict(scaled_features)[0]
-                
+
                 # Apply model weight
                 weight = self.model_weights.get(symbol, {}).get(model_name, 1.0)
                 predictions[model_name] = direction_score * weight
-                
+
             except Exception as e:
-                logger.error(f"Error getting prediction from {model_name} for {symbol}: {e}")
+                logger.error(
+                    f"Error getting prediction from {model_name} for {symbol}: {e}"
+                )
                 predictions[model_name] = 0.0
-        
+
         return predictions
-    
+
     def _calculate_ensemble_prediction(
         self, model_predictions: Dict[str, float]
     ) -> Dict[str, Any]:
@@ -359,33 +390,37 @@ class EnsemblePredictor:
         """
         if not model_predictions:
             return self._get_default_prediction()
-        
+
         # Calculate weighted average
         predictions = list(model_predictions.values())
         weights = [abs(p) for p in predictions]  # Use absolute values as weights
-        
+
         if sum(weights) == 0:
             return self._get_default_prediction()
-        
+
         # Weighted average direction
-        weighted_direction = sum(p * w for p, w in zip(predictions, weights)) / sum(weights)
-        
+        weighted_direction = sum(p * w for p, w in zip(predictions, weights)) / sum(
+            weights
+        )
+
         # Calculate confidence based on agreement between models
         agreement = self._calculate_model_agreement(predictions)
         base_confidence = min(abs(weighted_direction), 1.0)
         confidence = base_confidence * agreement
-        
+
         # Determine signal strength
-        signal_strength = self._calculate_signal_strength(weighted_direction, confidence)
-        
+        signal_strength = self._calculate_signal_strength(
+            weighted_direction, confidence
+        )
+
         return {
-            'direction': weighted_direction,
-            'confidence': confidence,
-            'signal_strength': signal_strength,
-            'model_agreement': agreement,
-            'fundamental_score': 0.5  # Placeholder for fundamental analysis
+            "direction": weighted_direction,
+            "confidence": confidence,
+            "signal_strength": signal_strength,
+            "model_agreement": agreement,
+            "fundamental_score": 0.5,  # Placeholder for fundamental analysis
         }
-    
+
     def _calculate_model_agreement(self, predictions: List[float]) -> float:
         """
         Calculates the agreement between models.
@@ -401,7 +436,7 @@ class EnsemblePredictor:
         """
         if len(predictions) < 2:
             return 0.5
-        
+
         # Convert to buy/sell/hold signals
         signals = []
         for pred in predictions:
@@ -411,17 +446,17 @@ class EnsemblePredictor:
                 signals.append(-1)  # Sell
             else:
                 signals.append(0)  # Hold
-        
+
         # Calculate agreement
         if not signals:
             return 0.5
-        
+
         most_common = max(set(signals), key=signals.count)
         agreement_count = signals.count(most_common)
         agreement_ratio = agreement_count / len(signals)
-        
+
         return agreement_ratio
-    
+
     def _calculate_signal_strength(self, direction: float, confidence: float) -> str:
         """
         Categorizes the signal strength based on direction and confidence.
@@ -443,7 +478,7 @@ class EnsemblePredictor:
             return "MODERATE"
         else:
             return "WEAK"
-    
+
     def _get_default_prediction(self) -> Dict[str, Any]:
         """
         Returns a default, neutral prediction when a valid one cannot be generated.
@@ -459,7 +494,7 @@ class EnsemblePredictor:
             "fundamental_score": 0.5,
             "model_scores": {},
         }
-    
+
     async def _create_models_for_symbol(self, symbol: str):
         """
         Creates and initializes a set of models and scalers for a new symbol.
@@ -468,68 +503,52 @@ class EnsemblePredictor:
             symbol (str): The symbol for which to create models.
         """
         logger.info(f"Creating new model set for symbol: {symbol}")
-        
+
         # Initialize model containers
         self.models[symbol] = {}
         self.scalers[symbol] = {}
         self.model_weights[symbol] = {}
-        
+
         # Define model configurations
         model_configs = {
-            'random_forest': {
-                'model': RandomForestClassifier(
-                    n_estimators=100,
-                    max_depth=10,
-                    min_samples_split=5,
-                    random_state=42
+            "random_forest": {
+                "model": RandomForestClassifier(
+                    n_estimators=100, max_depth=10, min_samples_split=5, random_state=42
                 ),
-                'scaler': RobustScaler()
+                "scaler": RobustScaler(),
             },
-            'xgboost': {
-                'model': xgb.XGBClassifier(
-                    n_estimators=100,
-                    max_depth=6,
-                    learning_rate=0.1,
-                    random_state=42
+            "xgboost": {
+                "model": xgb.XGBClassifier(
+                    n_estimators=100, max_depth=6, learning_rate=0.1, random_state=42
                 ),
-                'scaler': StandardScaler()
+                "scaler": StandardScaler(),
             },
-            'lightgbm': {
-                'model': lgb.LGBMClassifier(
-                    n_estimators=100,
-                    max_depth=6,
-                    learning_rate=0.1,
-                    random_state=42
+            "lightgbm": {
+                "model": lgb.LGBMClassifier(
+                    n_estimators=100, max_depth=6, learning_rate=0.1, random_state=42
                 ),
-                'scaler': StandardScaler()
+                "scaler": StandardScaler(),
             },
-            'gradient_boosting': {
-                'model': GradientBoostingClassifier(
-                    n_estimators=100,
-                    max_depth=6,
-                    learning_rate=0.1,
-                    random_state=42
+            "gradient_boosting": {
+                "model": GradientBoostingClassifier(
+                    n_estimators=100, max_depth=6, learning_rate=0.1, random_state=42
                 ),
-                'scaler': RobustScaler()
+                "scaler": RobustScaler(),
             },
-            'svm': {
-                'model': SVC(
-                    kernel='rbf',
-                    probability=True,
-                    random_state=42
-                ),
-                'scaler': StandardScaler()
-            }
+            "svm": {
+                "model": SVC(kernel="rbf", probability=True, random_state=42),
+                "scaler": StandardScaler(),
+            },
         }
-        
+
         # Initialize models
         for model_name, config in model_configs.items():
-            self.models[symbol][model_name] = config['model']
-            self.scalers[symbol][model_name] = config['scaler']
+            self.models[symbol][model_name] = config["model"]
+            self.scalers[symbol][model_name] = config["scaler"]
             self.model_weights[symbol][model_name] = 1.0
-        
+
         logger.info(f"Created {len(model_configs)} models for {symbol}")
-    
+
     async def train_models(
         self,
         symbol: str,
@@ -549,68 +568,76 @@ class EnsemblePredictor:
         """
         try:
             logger.info(f"Starting model training for {symbol}")
-            
+
             if symbol not in self.models:
                 await self._create_models_for_symbol(symbol)
-            
+
             # Prepare training data
-            X, y = await self._prepare_training_data(symbol, training_data, target_column)
-            
+            X, y = await self._prepare_training_data(
+                symbol, training_data, target_column
+            )
+
             if len(X) < 100:  # Minimum training samples
-                logger.warning(f"Insufficient training data for {symbol}: {len(X)} samples")
-                return {'status': 'insufficient_data'}
-            
+                logger.warning(
+                    f"Insufficient training data for {symbol}: {len(X)} samples"
+                )
+                return {"status": "insufficient_data"}
+
             # Train each model
             model_scores = {}
             for model_name, model in self.models[symbol].items():
                 try:
                     scaler = self.scalers[symbol][model_name]
-                    
+
                     # Scale features
                     X_scaled = scaler.fit_transform(X)
-                    
+
                     # Time series cross-validation
                     tscv = TimeSeriesSplit(n_splits=5)
-                    cv_scores = cross_val_score(model, X_scaled, y, cv=tscv, scoring='accuracy')
-                    
+                    cv_scores = cross_val_score(
+                        model, X_scaled, y, cv=tscv, scoring="accuracy"
+                    )
+
                     # Train on full dataset
                     model.fit(X_scaled, y)
-                    
+
                     # Calculate model weight based on performance
                     avg_score = np.mean(cv_scores)
                     self.model_weights[symbol][model_name] = max(0.1, avg_score)
-                    
+
                     model_scores[model_name] = {
-                        'cv_mean': avg_score,
-                        'cv_std': np.std(cv_scores),
-                        'weight': self.model_weights[symbol][model_name]
+                        "cv_mean": avg_score,
+                        "cv_std": np.std(cv_scores),
+                        "weight": self.model_weights[symbol][model_name],
                     }
-                    
-                    logger.info(f"Trained {model_name} for {symbol}: CV score = {avg_score:.3f}")
-                    
+
+                    logger.info(
+                        f"Trained {model_name} for {symbol}: CV score = {avg_score:.3f}"
+                    )
+
                 except Exception as e:
                     logger.error(f"Error training {model_name} for {symbol}: {e}")
-                    model_scores[model_name] = {'error': str(e)}
-            
+                    model_scores[model_name] = {"error": str(e)}
+
             # Save models
             await self._save_models(symbol)
-            
+
             # Update training history
             self.last_retrain_time[symbol] = datetime.now()
-            
+
             return {
-                'status': 'success',
-                'symbol': symbol,
-                'training_samples': len(X),
-                'models_trained': len(model_scores),
-                'model_scores': model_scores,
-                'timestamp': datetime.now()
+                "status": "success",
+                "symbol": symbol,
+                "training_samples": len(X),
+                "models_trained": len(model_scores),
+                "model_scores": model_scores,
+                "timestamp": datetime.now(),
             }
-            
+
         except Exception as e:
             logger.error(f"Error training models for {symbol}: {e}")
-            return {'status': 'error', 'error': str(e)}
-    
+            return {"status": "error", "error": str(e)}
+
     async def _prepare_training_data(
         self, symbol: str, data: pd.DataFrame, target_column: str
     ) -> Tuple[np.ndarray, np.ndarray]:
@@ -643,7 +670,7 @@ class EnsemblePredictor:
         y = np.array(targets)
 
         return X, y
-    
+
     async def _save_models(self, symbol: str):
         """
         Saves the trained models, scalers, and metadata for a symbol to disk.
@@ -679,7 +706,7 @@ class EnsemblePredictor:
 
         except Exception as e:
             logger.error(f"Error saving models for {symbol}: {e}")
-    
+
     async def _load_models(self):
         """Loads existing models, scalers, and metadata from disk."""
         try:
@@ -719,9 +746,7 @@ class EnsemblePredictor:
                     for scaler_file in symbol_dir.glob("*_scaler.joblib"):
                         scaler_name = scaler_file.stem.replace("_scaler", "")
                         try:
-                            self.scalers[symbol][scaler_name] = joblib.load(
-                                scaler_file
-                            )
+                            self.scalers[symbol][scaler_name] = joblib.load(scaler_file)
                         except Exception as e:
                             logger.error(
                                 f"Error loading scaler {scaler_name} for {symbol}: {e}"
@@ -734,7 +759,7 @@ class EnsemblePredictor:
 
         except Exception as e:
             logger.error(f"Error loading models from disk: {e}")
-    
+
     async def should_retrain(self, symbol: str) -> bool:
         """
         Checks if the models for a given symbol should be retrained.
@@ -755,7 +780,7 @@ class EnsemblePredictor:
         retrain_interval_hours = self.config.get("retrain_interval_hours", 24)
         retrain_interval = timedelta(hours=retrain_interval_hours)
         return (datetime.now() - last_retrain) > retrain_interval
-    
+
     async def get_model_summary(self, symbol: str) -> Dict[str, Any]:
         """
         Gets a summary of the models for a specific symbol.

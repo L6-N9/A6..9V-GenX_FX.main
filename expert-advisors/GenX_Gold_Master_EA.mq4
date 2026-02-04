@@ -219,7 +219,8 @@ int ParseGoldSignals(string csvData, GoldSignal &signals[])
     
     for(int i = 1; i < lineCount; i++) { // Skip header
         string fields[];
-        if(StringSplit(lines[i], ',', fields) < 8) continue;
+        int fieldCount = StringSplit(lines[i], ',', fields);
+        if(fieldCount < 8) continue;
         
         string symbol = StringTrimLeft(StringTrimRight(fields[1]));
         
@@ -236,7 +237,15 @@ int ParseGoldSignals(string csvData, GoldSignal &signals[])
         signal.entryPrice = StringToDouble(fields[3]);
         signal.stopLoss = StringToDouble(fields[4]);
         signal.takeProfit = StringToDouble(fields[5]);
-        signal.confidence = StringToDouble(fields[7]);
+
+        // In the standardized 9-column format, confidence is at index 7.
+        // If 8 columns, we might be using the simplified format where lot size is at 6.
+        if(fieldCount >= 8) {
+            signal.confidence = StringToDouble(fields[7]);
+        } else {
+            signal.confidence = 80.0; // Default
+        }
+
         signal.timestamp = TimeCurrent();
         signal.volatility = GetPairVolatility(symbol);
         

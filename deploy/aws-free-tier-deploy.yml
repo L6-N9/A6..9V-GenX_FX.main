@@ -201,3 +201,9 @@ Outputs:
     Value: !Sub 'ssh -i ${KeyPairName}.pem ec2-user@${EC2Instance.PublicIp}'
     Export:
       Name: !Sub '${Environment}-genx-ssh-command'
+
+  InstanceId:
+    Description: The instance ID of the EC2 instance
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub '${Environment}-genx-instance-id'

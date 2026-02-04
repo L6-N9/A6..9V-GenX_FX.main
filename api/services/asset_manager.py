@@ -4,18 +4,20 @@ Provides centralized portfolio tracking, risk management, and trade logging.
 """
 
 import asyncio
-import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, asdict
-import pandas as pd
-import gspread
-from gspread_asyncio import AsyncioGspreadClientManager
-import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
-from google.oauth2.service_account import Credentials
 import json
+import logging
 import os
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Union
+
+import gspread
+import openpyxl
+import pandas as pd
+from google.oauth2.service_account import Credentials
+from gspread_asyncio import AsyncioGspreadClientManager
+from openpyxl.styles import Alignment, Font, PatternFill
+
 from ..config.settings import get_settings
 
 settings = get_settings()
@@ -236,6 +238,7 @@ class GoogleSheetsManager:
             Exception: If the client fails to initialize.
         """
         try:
+
             def get_creds():
                 return Credentials.from_service_account_file(
                     self.credentials_path,
@@ -293,7 +296,7 @@ class GoogleSheetsManager:
         except Exception as e:
             logger.error(f"Error setting up worksheets: {e}")
             raise
-    
+
     async def _format_dashboard(self):
         """Formats the 'Dashboard' worksheet with headers and structure."""
         spreadsheet = await self.get_spreadsheet()
@@ -331,7 +334,7 @@ class GoogleSheetsManager:
                 "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.8},
             },
         )
-        
+
     async def _format_positions_sheet(self):
         """Formats the 'Open Positions' worksheet with headers."""
         spreadsheet = await self.get_spreadsheet()
@@ -360,7 +363,7 @@ class GoogleSheetsManager:
                 "backgroundColor": {"red": 0.8, "green": 0.2, "blue": 0.2},
             },
         )
-    
+
     async def _format_trades_sheet(self):
         """Formats the 'Closed Trades' worksheet with headers."""
         spreadsheet = await self.get_spreadsheet()
@@ -391,7 +394,7 @@ class GoogleSheetsManager:
                 "backgroundColor": {"red": 0.2, "green": 0.8, "blue": 0.2},
             },
         )
-    
+
     async def _format_risk_config(self):
         """Formats the 'Risk Configuration' worksheet with default parameters."""
         spreadsheet = await self.get_spreadsheet()
@@ -425,7 +428,7 @@ class GoogleSheetsManager:
                 "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.2},
             },
         )
-    
+
     async def _format_performance_sheet(self):
         """Formats the 'Performance Analytics' worksheet with headers."""
         spreadsheet = await self.get_spreadsheet()
@@ -450,7 +453,7 @@ class GoogleSheetsManager:
                 "backgroundColor": {"red": 0.2, "green": 0.8, "blue": 0.8},
             },
         )
-    
+
     async def update_dashboard(self, account_summary: AccountSummary):
         """
         Updates the 'Dashboard' worksheet with the latest account summary.
@@ -496,7 +499,7 @@ class GoogleSheetsManager:
         except Exception as e:
             logger.error(f"Error updating dashboard: {e}")
             raise
-    
+
     async def update_positions(self, positions: List[Position]):
         """
         Updates the 'Open Positions' worksheet with the current list of open positions.
@@ -561,7 +564,7 @@ class GoogleSheetsManager:
         except Exception as e:
             logger.error(f"Error updating positions: {e}")
             raise
-    
+
     async def add_closed_trade(self, trade: ClosedTrade):
         """
         Appends a new closed trade to the 'Closed Trades' worksheet.
@@ -574,7 +577,9 @@ class GoogleSheetsManager:
         """
         try:
             spreadsheet = await self.get_spreadsheet()
-            worksheet = await spreadsheet.worksheet(self.worksheet_names["closed_trades"])
+            worksheet = await spreadsheet.worksheet(
+                self.worksheet_names["closed_trades"]
+            )
 
             # Add trade data to the next empty row
             trade_data = [
@@ -600,7 +605,7 @@ class GoogleSheetsManager:
         except Exception as e:
             logger.error(f"Error adding closed trade: {e}")
             raise
-    
+
     async def get_risk_parameters(self) -> RiskParameters:
         """
         Retrieves risk parameters from the 'Risk Configuration' worksheet.
@@ -637,16 +642,15 @@ class GoogleSheetsManager:
 
             risk_params = RiskParameters(
                 max_risk_per_trade=float(params_dict.get("Max Risk Per Trade", 0.02)),
-                max_daily_drawdown=float(
-                    params_dict.get("Max Daily Drawdown", 0.05)
-                ),
+                max_daily_drawdown=float(params_dict.get("Max Daily Drawdown", 0.05)),
                 max_correlation=float(params_dict.get("Max Correlation", 0.7)),
                 max_exposure_per_currency=float(
                     params_dict.get("Max Exposure Per Currency", 0.1)
                 ),
                 max_lot_size=float(params_dict.get("Max Lot Size", 1.0)),
                 max_open_positions=int(params_dict.get("Max Open Positions", 10)),
-                instruments_to_trade=instruments or None,  # Use None to trigger defaults if empty
+                instruments_to_trade=instruments
+                or None,  # Use None to trigger defaults if empty
             )
 
             return risk_params
@@ -719,9 +723,11 @@ class ExcelManager:
                 ["Free Margin", account_summary.free_margin, "", ""],
                 [
                     "Margin Level",
-                    f"{account_summary.margin_level:.2f}%"
-                    if account_summary.margin_level
-                    else "N/A",
+                    (
+                        f"{account_summary.margin_level:.2f}%"
+                        if account_summary.margin_level
+                        else "N/A"
+                    ),
                     "",
                     "",
                 ],
@@ -860,15 +866,20 @@ class AssetManager:
         self.risk_parameters = RiskParameters()
 
         if self.use_google_sheets:
-            if settings.GOOGLE_SHEETS_CREDENTIALS_PATH and settings.GOOGLE_SHEETS_SPREADSHEET_KEY:
+            if (
+                settings.GOOGLE_SHEETS_CREDENTIALS_PATH
+                and settings.GOOGLE_SHEETS_SPREADSHEET_KEY
+            ):
                 self.sheets_manager = GoogleSheetsManager(
                     credentials_path=settings.GOOGLE_SHEETS_CREDENTIALS_PATH,
                     spreadsheet_key=settings.GOOGLE_SHEETS_SPREADSHEET_KEY,
                 )
             else:
-                logger.warning("Google Sheets is enabled but credentials or key are missing.")
-                self.use_google_sheets = False # Fallback to Excel
-        
+                logger.warning(
+                    "Google Sheets is enabled but credentials or key are missing."
+                )
+                self.use_google_sheets = False  # Fallback to Excel
+
         if not self.use_google_sheets:
             self.excel_manager = ExcelManager(
                 file_path=settings.EXCEL_FILE_PATH or "trading_portfolio.xlsx"
@@ -978,7 +989,9 @@ class AssetManager:
             # Check risk per trade
             if signal.stop_loss and current_equity > 0:
                 # This is an approximation. Accurate calculation requires pip value.
-                risk_amount = abs(signal.volume * (signal.open_price - signal.stop_loss) * 100000)
+                risk_amount = abs(
+                    signal.volume * (signal.open_price - signal.stop_loss) * 100000
+                )
                 risk_percentage = risk_amount / current_equity
 
                 if risk_percentage > self.risk_parameters.max_risk_per_trade:

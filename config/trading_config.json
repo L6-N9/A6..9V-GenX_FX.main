@@ -7,7 +7,7 @@
   },
   
   "trading": {
-    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD"],
+    "symbols": ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "BTCUSD", "BTCXAU"],
     "timeframes": ["M15", "H1", "H4", "D1"],
     "primary_timeframe": "H1",
     "signal_generation_interval": 300,

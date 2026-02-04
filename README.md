@@ -2,10 +2,10 @@
 
 **An advanced, AI-powered platform for Forex, Cryptocurrency, and Gold trading.**
 
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/Mouy-leng/GenX_FX)
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/A6-9V/A6..9V-GenX_FX.main)
 
 ---
 
@@ -21,6 +21,7 @@ GenX FX is a comprehensive, AI-powered trading system that combines machine lear
 -   ⚡ **Real-Time Integration**: Features live data feeds through WebSocket and REST APIs for instant trade execution and real-time analysis.
 -   🔗 **Multi-Broker Support**: Integrates with various brokers via ForexConnect, FXCM, and Exness, providing flexibility and choice.
 -   📈 **Advanced Signal Generation**: Generates ML-based trading signals and exports them to Excel, CSV, or JSON formats for consumption by EAs or other tools.
+-   📱 **Multi-Channel Notifications**: Send trading signals and alerts to Telegram, Discord, and WhatsApp groups for real-time team updates.
 -   🛠️ **Unified CLI**: A powerful and unified command-line interface (`genx`) for all major operations, from system status checks to automated deployments and AI model training.
 
 ---
@@ -55,8 +56,8 @@ This option allows you to run the entire backend, API, and AI models for develop
 
 1.  **Clone the Repository**:
     ```bash
-    git clone https://github.com/Mouy-leng/GenX_FX.git
-    cd GenX_FX
+    git clone https://github.com/A6-9V/A6..9V-GenX_FX.main.git
+    cd A6..9V-GenX_FX.main
     ```
 
 2.  **Install Dependencies**:
@@ -133,7 +134,15 @@ For more detailed information, please refer to the following guides in the repos
 -   **[GOLD_MASTER_EA_GUIDE.md](GOLD_MASTER_EA_GUIDE.md)**: A comprehensive guide for the specialized gold trading EA.
 -   **[SYSTEM_ARCHITECTURE_GUIDE.md](SYSTEM_ARCHITECTURE_GUIDE.md)**: An in-depth look at the system's design and architecture.
 -   **[API_KEY_SETUP.md](API_KEY_SETUP.md)**: Instructions for configuring the necessary API keys for all services.
--   **[AWS_DEPLOYMENT_GUIDE.md](AWS_DEPLOYMENT_GUIDE.md)**: A step-by-step guide to deploying the platform on AWS.
+-   **[WHATSAPP_INTEGRATION_GUIDE.md](WHATSAPP_INTEGRATION_GUIDE.md)**: Guide for setting up WhatsApp notifications and group integration.
+
+### 🚀 Deployment Guides
+
+-   **[DEPLOYMENT_SETUP_INSTRUCTIONS.md](DEPLOYMENT_SETUP_INSTRUCTIONS.md)**: **NEW!** Master guide for forge.mql5.io and VPS deployment
+-   **[docs/FORGE_MQL5_DEPLOYMENT.md](docs/FORGE_MQL5_DEPLOYMENT.md)**: Complete guide for forge.mql5.io integration with deploy keys
+-   **[docs/VPS_QUICK_START.md](docs/VPS_QUICK_START.md)**: Quick reference for rapid VPS deployment with Docker
+-   **[docs/REPOSITORY_SECRETS_SETUP.md](docs/REPOSITORY_SECRETS_SETUP.md)**: Comprehensive secrets and credentials configuration
+-   **[AWS_DEPLOYMENT_GUIDE.md](AWS_DEPLOYMENT_GUIDE.md)**: Step-by-step guide to deploying the platform on AWS
 
 ---
 

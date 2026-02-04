@@ -17,6 +17,7 @@ input string EAName = "GenZ_Scalping_Bot_MT5"; // EA identification name
 input double LotSize = 0.01; // Trade lot size
 input int MagicNumber = 12345; // Magic number for trades
 input int MaxSpread = 30; // Maximum spread in points
+input string TradingHours = "00:00-23:59"; // Trading hours (server time)
 input bool EnableAutoTrading = true; // Enable automatic trading
 input int HeartbeatInterval = 30; // Heartbeat interval in seconds
 input int SignalCheckInterval = 5; // Check for signals every X seconds
@@ -239,6 +240,13 @@ void ProcessSingleSignal(CJAVal &signal)
     if(symbol != Symbol()) return; // Only trade current symbol
     if(confidence < 0.7) return; // Minimum confidence threshold
     if(!EnableAutoTrading) return;
+
+    // Check trading hours
+    if(!IsTradingTime())
+    {
+        Print("Outside trading hours. Signal ignored.");
+        return;
+    }
     
     // Check spread
     double spread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
@@ -260,6 +268,33 @@ void ProcessSingleSignal(CJAVal &signal)
     
     // Send confirmation back to server
     SendTradeConfirmation(signal, "executed");
+}
+
+//+------------------------------------------------------------------+
+//| Check trading hours                                              |
+//+------------------------------------------------------------------+
+bool IsTradingTime()
+{
+    datetime current_time = TimeCurrent();
+    MqlDateTime dt;
+    TimeToStruct(current_time, dt);
+
+    string current_time_str = StringFormat("%02d:%02d", dt.hour, dt.min);
+
+    // Parse TradingHours "HH:MM-HH:MM"
+    string parts[];
+    if (StringSplit(TradingHours, '-', parts) == 2) {
+        string start_time = parts[0];
+        string end_time = parts[1];
+
+        if (current_time_str >= start_time && current_time_str <= end_time) {
+            return true;
+        }
+    } else {
+        return true;
+    }
+
+    return false;
 }
 
 //+------------------------------------------------------------------+

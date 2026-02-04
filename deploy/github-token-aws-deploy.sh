@@ -28,8 +28,8 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# GitHub token (you can also set this as environment variable)
-GITHUB_TOKEN=${GITHUB_TOKEN:-"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"}
+# GitHub token (provide via environment variable or --token)
+GITHUB_TOKEN=${GITHUB_TOKEN:-""}
 
 # Default values
 ENVIRONMENT=${ENVIRONMENT:-"production"}
@@ -40,6 +40,11 @@ BRANCH=${BRANCH:-"main"}
 authenticate_github() {
     print_status "Authenticating with GitHub using token..."
     
+    if [ -z "$GITHUB_TOKEN" ]; then
+        print_error "GITHUB_TOKEN is not set. Export GITHUB_TOKEN or pass --token."
+        exit 1
+    fi
+
     # Set GitHub token for CLI
     export GITHUB_TOKEN
     

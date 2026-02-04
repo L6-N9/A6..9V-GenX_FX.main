@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Dict, Any
 import logging
+from typing import Any, Dict
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..models.schemas import SystemStatus
 from ..utils.auth import get_current_user
 
 router = APIRouter(prefix="/system", tags=["system"])
 logger = logging.getLogger(__name__)
+
 
 @router.get("/status", response_model=SystemStatus)
 async def get_system_status(current_user: dict = Depends(get_current_user)):
@@ -33,6 +35,7 @@ async def get_system_status(current_user: dict = Depends(get_current_user)):
         last_update=datetime.now(),
         active_strategies=["ensemble_model", "pattern_recognition"],
     )
+
 
 @router.get("/metrics")
 async def get_metrics(current_user: dict = Depends(get_current_user)):

@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS trading_pairs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Performance Optimization: Index on is_active column
+-- This index improves the performance of queries that filter trading pairs by their active status,
+-- such as the `/trading-pairs` endpoint.
+CREATE INDEX idx_trading_pairs_is_active ON trading_pairs(is_active);
+
 -- Market data table
 CREATE TABLE IF NOT EXISTS market_data (
     id INT AUTO_INCREMENT PRIMARY KEY,

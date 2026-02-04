@@ -1,7 +1,8 @@
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
 
 
 class SignalAnalyzer:
@@ -25,7 +26,7 @@ class SignalAnalyzer:
             "time": self._filter_by_time,
             "confluence": self._filter_by_confluence,
         }
-    
+
     def analyze_signals(
         self, patterns: Dict[str, List], market_data: pd.DataFrame
     ) -> List[Dict]:
@@ -59,15 +60,17 @@ class SignalAnalyzer:
                     "confidence": self._calculate_confidence(pattern, market_data),
                 }
                 all_signals.append(signal)
-        
+
         # Apply filters
         filtered_signals = self._apply_filters(all_signals)
-        
+
         # Sort by confidence and timestamp
-        filtered_signals.sort(key=lambda x: (x['confidence'], x['timestamp']), reverse=True)
-        
+        filtered_signals.sort(
+            key=lambda x: (x["confidence"], x["timestamp"]), reverse=True
+        )
+
         return filtered_signals
-    
+
     def generate_signals_from_predictions(
         self, predictions: pd.DataFrame
     ) -> List[Dict]:
@@ -130,10 +133,8 @@ class SignalAnalyzer:
                 return data.iloc[nearest_idx]["close"]
         except (KeyError, IndexError):
             return 0.0
-    
-    def _calculate_confidence(
-        self, pattern: Dict, market_data: pd.DataFrame
-    ) -> float:
+
+    def _calculate_confidence(self, pattern: Dict, market_data: pd.DataFrame) -> float:
         """
         Calculates a confidence score for a given pattern.
 
@@ -156,16 +157,14 @@ class SignalAnalyzer:
                 timestamp = pattern["timestamp"]
                 if timestamp in market_data.index:
                     current_volume = market_data.loc[timestamp, "volume"]
-                    avg_volume = (
-                        market_data["volume"].rolling(20).mean().loc[timestamp]
-                    )
+                    avg_volume = market_data["volume"].rolling(20).mean().loc[timestamp]
                     if avg_volume > 0:
                         volume_factor = min(current_volume / avg_volume, 2.0)
             except (KeyError, IndexError):
                 pass  # Ignore if timestamp is out of bounds
 
         return base_confidence * volume_factor
-    
+
     def _apply_filters(self, signals: List[Dict]) -> List[Dict]:
         """
         Applies a series of pre-defined filters to a list of signals.
@@ -180,12 +179,12 @@ class SignalAnalyzer:
         for filter_func in self.filters.values():
             filtered_signals = filter_func(filtered_signals)
         return filtered_signals
-    
+
     def _filter_by_strength(self, signals: List[Dict]) -> List[Dict]:
         """Filters signals by a minimum strength threshold."""
         min_strength = 0.5
         return [s for s in signals if s.get("strength", 0) >= min_strength]
-    
+
     def _filter_by_time(self, signals: List[Dict]) -> List[Dict]:
         """
         Filters signals to include only those generated within a recent time window.
@@ -195,7 +194,7 @@ class SignalAnalyzer:
         # cutoff_time = datetime.now() - timedelta(hours=24)
         # return [s for s in signals if s['timestamp'] >= cutoff_time]
         return signals  # FIXME: Re-enable this filter with proper timezone handling.
-    
+
     def _filter_by_confluence(self, signals: List[Dict]) -> List[Dict]:
         """
         Filters for signals that have confluence.
@@ -229,7 +228,7 @@ class SignalAnalyzer:
                 confluent_signals.append(strongest_signal)
 
         return confluent_signals
-    
+
     def update_signal_history(self, signals: List[Dict]):
         """
         Updates the signal history with new signals and prunes old ones.

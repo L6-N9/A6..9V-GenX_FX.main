@@ -3,11 +3,12 @@ Model Trainer for GenX FX Trading System
 Handles AI model training and validation
 """
 
-import logging
 import asyncio
-from typing import List, Dict, Any
+import logging
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
+
 
 class ModelTrainer:
     """
@@ -53,7 +54,9 @@ class ModelTrainer:
             symbols (List[str]): The trading symbols to train models for.
             timeframes (List[str]): The timeframes to use for training.
         """
-        logger.info(f"Starting training for symbols: {symbols} on timeframes: {timeframes}")
+        logger.info(
+            f"Starting training for symbols: {symbols} on timeframes: {timeframes}"
+        )
         # Placeholder for complex training logic
         await asyncio.sleep(0.1)  # Simulate async work
         logger.info("Model training simulation complete.")

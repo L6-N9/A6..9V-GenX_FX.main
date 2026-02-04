@@ -2,6 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
+
 def setup_logging():
     """
     Sets up the logging configuration for the application.

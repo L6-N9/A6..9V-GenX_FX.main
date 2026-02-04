@@ -1,8 +1,10 @@
-from pydantic_settings import BaseSettings
-from pydantic import ConfigDict, validator, Field
-from typing import Optional, Literal
 import os
 from pathlib import Path
+from typing import Literal, Optional
+
+from pydantic import ConfigDict, Field, field_validator
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
         LOG_FILE (str): The file path for logging.
         VPS_PUBLIC_IP (Optional[str]): The public IP address of the VPS, if applicable.
     """
+
     model_config = ConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -48,38 +51,47 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     DEBUG: bool = False
-    
+
     # Exness Broker Configuration
-    EXNESS_LOGIN: str = Field(..., description="Exness account login")
-    EXNESS_PASSWORD: str = Field(..., description="Exness account password")
-    EXNESS_SERVER: str = Field(..., description="Exness server (e.g., Exness-MT5Trial8)")
+    EXNESS_LOGIN: str = Field("default_login", description="Exness account login")
+    EXNESS_PASSWORD: str = Field(
+        "default_password", description="Exness account password"
+    )
+    EXNESS_SERVER: str = Field(
+        "Exness-MT5Trial8", description="Exness server (e.g., Exness-MT5Trial8)"
+    )
     EXNESS_ACCOUNT_TYPE: Literal["demo", "live"] = "demo"
     EXNESS_TERMINAL: Literal["MT4", "MT5"] = "MT5"
-    
+
     # Trading Configuration
     MT5_SYMBOL: str = "XAUUSD"
     MT5_TIMEFRAME: str = "TIMEFRAME_M15"
     EA_MAGIC_NUMBER: int = 12345
     EA_DEFAULT_LOT_SIZE: float = 0.01
     EA_MAX_RISK_PER_TRADE: float = 0.02  # 2% risk per trade
-    
+
     # EA Communication
     EA_SERVER_HOST: str = "localhost"
     EA_SERVER_PORT: int = 5000
-    
+
     # Database Configuration
     DATABASE_URL: str = "postgresql://genx:password@localhost:5432/genx_trading"
     REDIS_URL: str = "redis://localhost:6379/0"
-    
+
     # Security
-    SECRET_KEY: str = Field(..., description="Secret key for JWT tokens")
+    SECRET_KEY: str = Field(
+        "default_secret_key", description="Secret key for JWT tokens"
+    )
+    CRYPTION_KEY: Optional[str] = Field(
+        None, description="Key for encrypting sensitive data"
+    )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "/var/log/genx-trading/app.log"
-    
+
     # VPS Configuration
     VPS_PUBLIC_IP: Optional[str] = None
 
@@ -111,15 +123,37 @@ class Settings(BaseSettings):
     REDDIT_PASSWORD: Optional[str] = None
     REDDIT_USER_AGENT: str = "GenX-Trading-Bot/1.0"
 
+    # GitHub Configuration
+    GITHUB_TOKEN: Optional[str] = None
+    GITHUB_APP_CLIENT_ID: Optional[str] = None
+    GITHUB_APP_CLIENT_SECRET: Optional[str] = None
+
+    # Mail Configuration
+    MAIL_USERNAME: Optional[str] = None
+    MAIL_PASSWORD: Optional[str] = None
+    MAIL_SERVER: str = "smtp.gmail.com"
+    MAIL_PORT: int = 587
+    MAIL_FROM: Optional[str] = None
+
+    # Messaging Configuration
+    TELEGRAM_TOKEN: Optional[str] = None
+    DISCORD_TOKEN: Optional[str] = None
+
     # Bybit Configuration
     BYBIT_API_KEY: Optional[str] = None
     BYBIT_API_SECRET: Optional[str] = None
 
+    # OneDrive Configuration
+    ONEDRIVE_CLIENT_ID: Optional[str] = None
+    ONEDRIVE_TENANT_ID: Optional[str] = "common"
+    ONEDRIVE_FOLDER_NAME: str = "GenX_Signals"
+
     # WebSocket Configuration
     WEBSOCKET_RECONNECT_INTERVAL: int = 5
     MAX_WEBSOCKET_RETRIES: int = 10
-    
-    @validator("EXNESS_LOGIN")
+
+    @field_validator("EXNESS_LOGIN")
+    @classmethod
     def validate_login(cls, v: str) -> str:
         """
         Validates that the Exness login is at least 6 characters long.
@@ -136,8 +170,9 @@ class Settings(BaseSettings):
         if not v or len(v) < 6:
             raise ValueError("Login must be at least 6 characters")
         return v
-    
-    @validator("EXNESS_PASSWORD")
+
+    @field_validator("EXNESS_PASSWORD")
+    @classmethod
     def validate_password(cls, v: str) -> str:
         """
         Validates that the Exness password is at least 8 characters long.
@@ -154,8 +189,9 @@ class Settings(BaseSettings):
         if not v or len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
         return v
-    
-    @validator("EA_DEFAULT_LOT_SIZE")
+
+    @field_validator("EA_DEFAULT_LOT_SIZE")
+    @classmethod
     def validate_lot_size(cls, v: float) -> float:
         """
         Validates that the default lot size is within a reasonable range.
@@ -172,8 +208,9 @@ class Settings(BaseSettings):
         if v <= 0 or v > 100:
             raise ValueError("Lot size must be between 0.01 and 100")
         return v
-    
-    @validator("EA_MAX_RISK_PER_TRADE")
+
+    @field_validator("EA_MAX_RISK_PER_TRADE")
+    @classmethod
     def validate_risk_percentage(cls, v: float) -> float:
         """
         Validates that the maximum risk per trade is within a safe range.
@@ -190,7 +227,7 @@ class Settings(BaseSettings):
         if v <= 0 or v > 0.1:  # Max 10% risk per trade
             raise ValueError("Risk per trade must be between 0.01 and 0.1 (1-10%)")
         return v
-    
+
     def get_database_url(self) -> str:
         """
         Returns the properly formatted database connection URL.
@@ -199,7 +236,7 @@ class Settings(BaseSettings):
             str: The PostgreSQL database URL.
         """
         return self.DATABASE_URL
-    
+
     def get_redis_url(self) -> str:
         """
         Returns the properly formatted Redis connection URL.
@@ -208,7 +245,7 @@ class Settings(BaseSettings):
             str: The Redis URL.
         """
         return self.REDIS_URL
-    
+
     def is_demo_account(self) -> bool:
         """
         Checks if the configured account type is a demo account.
@@ -217,7 +254,7 @@ class Settings(BaseSettings):
             bool: True if the account is a demo account, False otherwise.
         """
         return self.EXNESS_ACCOUNT_TYPE.lower() == "demo"
-    
+
     def get_ea_connection_string(self) -> str:
         """
         Constructs the connection string for the Expert Advisor server.
@@ -227,18 +264,22 @@ class Settings(BaseSettings):
         """
         return f"{self.EA_SERVER_HOST}:{self.EA_SERVER_PORT}"
 
+
 # Create global settings instance
 settings = Settings()
+
 
 # Optional: Environment-specific settings
 class DevelopmentSettings(Settings):
     """Settings for development environment."""
+
     DEBUG: bool = True
     LOG_LEVEL: str = "DEBUG"
 
 
 class ProductionSettings(Settings):
     """Settings for production environment."""
+
     DEBUG: bool = False
     LOG_LEVEL: str = "WARNING"
 

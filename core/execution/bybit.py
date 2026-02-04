@@ -1,5 +1,7 @@
 import os
+
 from pybit.unified_trading import HTTP
+
 
 class BybitAPI:
     """
@@ -31,7 +33,9 @@ class BybitAPI:
 
         # For testnet, set testnet=True
         self.session = HTTP(
-            testnet=False, api_key=api_key, api_secret=api_secret,
+            testnet=False,
+            api_key=api_key,
+            api_secret=api_secret,
         )
 
     def get_market_data(self, symbol: str, interval: str, limit: int = 200):

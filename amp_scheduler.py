@@ -5,13 +5,14 @@ Handles automated job scheduling and execution
 """
 
 import asyncio
-import schedule
+import json
+import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-import json
-import logging
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import schedule
 
 from amp_auth import check_auth, get_user_info
 from amp_job_runner import AMPJobRunner
@@ -19,13 +20,11 @@ from amp_job_runner import AMPJobRunner
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/amp_scheduler.log'),
-        logging.StreamHandler()
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("logs/amp_scheduler.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
+
 
 class AMPScheduler:
     """
@@ -76,7 +75,7 @@ class AMPScheduler:
                 json.dump(self.config, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving scheduler config: {e}")
-    
+
     async def run_scheduled_job(self):
         """
         Executes a single scheduled job run.
@@ -96,7 +95,7 @@ class AMPScheduler:
             logger.info("Scheduled job completed successfully.")
         except Exception as e:
             logger.error(f"Error during scheduled job execution: {e}")
-    
+
     def setup_schedule(self):
         """Sets up the job schedule based on the loaded configuration."""
         schedule.clear()
@@ -110,7 +109,7 @@ class AMPScheduler:
             lambda: asyncio.run(self.run_scheduled_job())
         )
         logger.info(f"Scheduler configured to run jobs every {interval} minutes.")
-    
+
     def start(self):
         """Starts the scheduler's main loop."""
         if self.is_running:
@@ -131,12 +130,12 @@ class AMPScheduler:
             except Exception as e:
                 logger.error(f"An error occurred in the scheduler loop: {e}")
                 time.sleep(60)  # Wait before retrying on error
-    
+
     def stop(self):
         """Stops the scheduler's main loop."""
         logger.info("Stopping AMP Scheduler...")
         self.is_running = False
-    
+
     def get_status(self) -> Dict[str, Any]:
         """
         Gets the current status of the scheduler.
@@ -150,7 +149,7 @@ class AMPScheduler:
             "next_jobs": [str(job) for job in schedule.jobs],
             "last_run": self.get_last_run_time(),
         }
-    
+
     def get_last_run_time(self) -> Optional[str]:
         """
         Gets the timestamp of the last job run by parsing the log file.
@@ -169,7 +168,7 @@ class AMPScheduler:
         except Exception as e:
             logger.warning(f"Could not read last run time from log: {e}")
         return None
-    
+
     def update_config(self, **kwargs):
         """
         Updates the scheduler's configuration and saves it.
@@ -187,6 +186,7 @@ class AMPScheduler:
             logger.info("Restarting scheduler to apply new configuration...")
             # This restart logic might be better handled by a process manager
             self.setup_schedule()
+
 
 # Global scheduler instance
 amp_scheduler = AMPScheduler()

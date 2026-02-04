@@ -1,7 +1,8 @@
-import os
 import logging
-import pandas as pd
+import os
+
 import joblib
+import pandas as pd
 
 from core.execution.bybit import BybitAPI
 from core.patterns.pattern_detector import PatternDetector
@@ -9,7 +10,10 @@ from core.strategies.signal_analyzer import SignalAnalyzer
 from scripts.feature_engineering import create_features
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def get_realtime_data(symbol):
     """
@@ -19,14 +23,21 @@ def get_realtime_data(symbol):
     # Fetch 1-hour kline data for the last 200 hours
     market_data = bybit_api.get_market_data(symbol, "60")
 
-    if market_data and market_data.get("retCode") == 0 and market_data.get("result", {}).get("list"):
+    if (
+        market_data
+        and market_data.get("retCode") == 0
+        and market_data.get("result", {}).get("list")
+    ):
         kline_data = market_data["result"]["list"]
 
         # The kline data is returned in reverse chronological order (newest first). We need to reverse it.
-        kline_data.reverse() # Oldest first
+        kline_data.reverse()  # Oldest first
 
         # Create a pandas DataFrame from the data.
-        df = pd.DataFrame(kline_data, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+        df = pd.DataFrame(
+            kline_data,
+            columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"],
+        )
 
         # Convert the timestamp to a datetime object and set it as the index.
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
@@ -52,6 +63,7 @@ def get_realtime_data(symbol):
         else:
             return None
 
+
 if __name__ == "__main__":
     logging.info("Starting trading bot script...")
 
@@ -69,11 +81,11 @@ if __name__ == "__main__":
 
         # Make predictions
         if not features_df.empty:
-            X = features_df.drop(columns=['target'])
+            X = features_df.drop(columns=["target"])
             predictions = model.predict(X)
 
             # Add predictions to the DataFrame
-            features_df['prediction'] = predictions
+            features_df["prediction"] = predictions
 
             logging.info("Predictions generated:")
             logging.info(f"\n{features_df[['close', 'prediction']].tail().to_string()}")

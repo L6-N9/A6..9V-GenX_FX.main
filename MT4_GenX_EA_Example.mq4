@@ -81,7 +81,8 @@ void ReadAndProcessSignals()
         string stopLossStr = FileReadString(fileHandle);
         string takeProfitStr = FileReadString(fileHandle);
         string lotSizeStr = FileReadString(fileHandle);
-        string timestamp = FileReadString(fileHandle);
+        string confidenceStr = FileReadString(fileHandle); // 8th field (index 7)
+        string timestamp = FileReadString(fileHandle);    // 9th field (index 8)
         
         // Skip empty lines
         if(magic == "" || symbol == "")

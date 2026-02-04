@@ -40,15 +40,48 @@
   ],
   "services": [],
   "dependencies": [
-    "websockets"
+    "websockets",
+    "google-generativeai",
+    "praw",
+    "newsapi-python",
+    "alpha-vantage",
+    "finnhub-python",
+    "beautifulsoup4",
+    "lxml",
+    "textblob"
   ],
-  "env_vars": {},
+  "env_vars": {
+    "GEMINI_API_KEY": "",
+    "NEWSDATA_API_KEY": "",
+    "ALPHAVANTAGE_API_KEY": "",
+    "CONTEXTUALWEB_API_KEY": "",
+    "PREPNEWS_API_KEY": "",
+    "FMP_API_KEY": "",
+    "NEWSAPI_ORG_KEY": "",
+    "FINNHUB_API_KEY": "",
+    "REDDIT_CLIENT_ID": "",
+    "REDDIT_CLIENT_SECRET": "",
+    "REDDIT_USERNAME": "",
+    "REDDIT_PASSWORD": "",
+    "REDDIT_USER_AGENT": "GenX-Trading-Bot/1.0",
+    "ENABLE_NEWS_ANALYSIS": "true",
+    "ENABLE_REDDIT_ANALYSIS": "true",
+    "ENABLE_WEBSOCKET_FEED": "true",
+    "NEWS_REFRESH_INTERVAL": "300",
+    "REDDIT_REFRESH_INTERVAL": "600",
+    "WEBSOCKET_RECONNECT_INTERVAL": "5",
+    "MAX_WEBSOCKET_RETRIES": "10",
+    "SENTIMENT_THRESHOLD": "0.6"
+  },
   "description": "Complete integration: Gemini AI, Reddit signals, multi-source news, and WebSocket streams",
   "enable_sentiment_analysis": true,
   "enable_social_signals": true,
   "enable_news_feeds": true,
   "enable_websocket_streams": true,
   "enabled_services": [
+    "gemini_service",
+    "news_service",
+    "reddit_service",
     "websocket_service"
   ]
 }

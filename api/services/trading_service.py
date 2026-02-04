@@ -1,11 +1,20 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from ..models.schemas import TradeSignal, OrderRequest, OrderResponse, PortfolioStatus, SignalType, OrderType, OrderStatus
+from ..models.schemas import (
+    OrderRequest,
+    OrderResponse,
+    OrderStatus,
+    OrderType,
+    PortfolioStatus,
+    SignalType,
+    TradeSignal,
+)
 
 logger = logging.getLogger(__name__)
+
 
 class TradingService:
     """
@@ -162,9 +171,3 @@ class TradingService:
     async def stop_auto_trading(self):
         """Stops the automated trading strategy."""
         logger.info("Stopping auto trading")
-
-    async def shutdown(self):
-        """Shuts down the trading service and stops any active strategies."""
-        logger.info("Shutting down Trading Service...")
-        await self.stop_auto_trading()
-        self.initialized = False

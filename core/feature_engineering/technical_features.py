@@ -3,15 +3,17 @@ Technical Feature Engineering for GenX FX Trading System
 Generates technical indicators and features for ML models
 """
 
-import pandas as pd
-import numpy as np
-from typing import Dict, List, Optional, Tuple
-import sys
 import os
+import sys
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 # Add utils to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from utils.technical_indicators import TechnicalIndicators
+
 
 class TechnicalFeatureEngine:
     """
@@ -48,39 +50,39 @@ class TechnicalFeatureEngine:
         """
         if df.empty or len(df) < 50:
             return df
-            
+
         # Make a copy to avoid modifying original
         features_df = df.copy()
-        
+
         try:
             # Price-based features
             features_df = self._add_price_features(features_df)
-            
+
             # Moving averages
             features_df = self._add_moving_averages(features_df)
-            
+
             # Momentum indicators
             features_df = self._add_momentum_indicators(features_df)
-            
+
             # Volatility indicators
             features_df = self._add_volatility_indicators(features_df)
-            
+
             # Volume indicators (if volume available)
-            if 'Volume' in features_df.columns:
+            if "Volume" in features_df.columns:
                 features_df = self._add_volume_indicators(features_df)
-            
+
             # Pattern features
             features_df = self._add_pattern_features(features_df)
-            
+
             # Fill any NaN values
-            features_df = features_df.fillna(method='ffill').fillna(0)
-            
+            features_df = features_df.fillna(method="ffill").fillna(0)
+
         except Exception as e:
             print(f"Warning: Error generating features: {e}")
             return df
-            
+
         return features_df
-    
+
     def _add_price_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds basic price-based features to the DataFrame.
@@ -100,7 +102,7 @@ class TechnicalFeatureEngine:
         df["lower_shadow"] = df[["Open", "Close"]].min(axis=1) - df["Low"]
 
         return df
-    
+
     def _add_moving_averages(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds moving average features to the DataFrame.
@@ -130,7 +132,7 @@ class TechnicalFeatureEngine:
             df["sma_10_vs_50"] = (df["sma_10"] - df["sma_50"]) / df["sma_50"] * 100
 
         return df
-    
+
     def _add_momentum_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds momentum-based indicator features to the DataFrame.
@@ -172,7 +174,7 @@ class TechnicalFeatureEngine:
             print(f"Warning: Error adding momentum indicators: {e}")
 
         return df
-    
+
     def _add_volatility_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds volatility-based indicator features to the DataFrame.
@@ -201,7 +203,9 @@ class TechnicalFeatureEngine:
             # Price volatility
             for period in [5, 10, 20]:
                 if len(df) >= period:
-                    df[f"volatility_{period}"] = df["Close"].rolling(window=period).std()
+                    df[f"volatility_{period}"] = (
+                        df["Close"].rolling(window=period).std()
+                    )
                     df[f"volatility_pct_{period}"] = (
                         df[f"volatility_{period}"] / df["Close"] * 100
                     )
@@ -210,7 +214,7 @@ class TechnicalFeatureEngine:
             print(f"Warning: Error adding volatility indicators: {e}")
 
         return df
-    
+
     def _add_volume_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds volume-based indicator features to the DataFrame.
@@ -240,7 +244,7 @@ class TechnicalFeatureEngine:
             print(f"Warning: Error adding volume indicators: {e}")
 
         return df
-    
+
     def _add_pattern_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds candlestick and trend pattern features to the DataFrame.
@@ -276,7 +280,7 @@ class TechnicalFeatureEngine:
             print(f"Warning: Error adding pattern features: {e}")
 
         return df
-    
+
     def get_feature_importance(self, df: pd.DataFrame) -> Dict[str, float]:
         """
         Calculates basic feature importance based on correlation with price movement.
@@ -290,31 +294,35 @@ class TechnicalFeatureEngine:
         """
         if "price_change" not in df.columns:
             return {}
-            
+
         try:
             # Get numeric columns only
             numeric_cols = df.select_dtypes(include=[np.number]).columns
-            feature_cols = [col for col in numeric_cols if col not in ['Open', 'High', 'Low', 'Close', 'Volume']]
-            
+            feature_cols = [
+                col
+                for col in numeric_cols
+                if col not in ["Open", "High", "Low", "Close", "Volume"]
+            ]
+
             # Calculate correlation with price change
             correlations = {}
             for col in feature_cols:
                 if col in df.columns and not df[col].isna().all():
-                    corr = abs(df[col].corr(df['price_change']))
+                    corr = abs(df[col].corr(df["price_change"]))
                     if not np.isnan(corr):
                         correlations[col] = corr
-            
+
             # Sort by importance
-            sorted_features = dict(sorted(correlations.items(), key=lambda x: x[1], reverse=True))
+            sorted_features = dict(
+                sorted(correlations.items(), key=lambda x: x[1], reverse=True)
+            )
             return sorted_features
-            
+
         except Exception as e:
             print(f"Warning: Error calculating feature importance: {e}")
             return {}
-    
-    def select_top_features(
-        self, df: pd.DataFrame, n_features: int = 20
-    ) -> List[str]:
+
+    def select_top_features(self, df: pd.DataFrame, n_features: int = 20) -> List[str]:
         """
         Selects the top N most important features based on correlation.
 

@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+test-results/
 
 # Translations
 *.mo
@@ -190,6 +191,8 @@ config/*_credentials.json
 !amp_config.json
 secrets/
 credentials/
+service-account-key.json
+**/service-account-key.json
 
 # Docker
 .dockerignore
@@ -202,6 +205,7 @@ yarn-debug.log*
 yarn-error.log*
 .npm
 .yarn-integrity
+*.tsbuildinfo
 
 # AWS
 .aws/
@@ -212,6 +216,8 @@ awscliv2.zip
 *.key
 *.pem
 *.ppk
+*.pub
+amp-trading-key
 deploy_keys/
 
 # MacOS
@@ -258,4 +264,6 @@ $RECYCLE.BIN/
 *.zip
 *.tar.gz
 *.rar
-!ta-lib_*.debawscliv2.zip
+!ta-lib_*.deb
+onedrive_token.json
+google-cloud-sdk/

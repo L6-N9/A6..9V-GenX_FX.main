@@ -1,22 +1,26 @@
-from fastapi import HTTPException, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 try:
     from jose import JWTError, jwt
 except Exception:  # jose not installed in minimal/runtime builds
     JWTError = Exception
+
     class _DummyJWT:
         def decode(self, *args, **kwargs):
             return {}
+
     jwt = _DummyJWT()
-from datetime import datetime, timedelta
-from typing import Optional
 import logging
 import os
+from datetime import datetime, timedelta
+from typing import Optional
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
+
 
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
@@ -48,7 +52,9 @@ def get_current_user(
 
     try:
         payload = jwt.decode(
-            credentials.credentials, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            credentials.credentials,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
         )
         username: Optional[str] = payload.get("sub")
 
