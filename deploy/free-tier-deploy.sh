@@ -139,7 +139,7 @@ monitor_deployment() {
     local instance_id=$(aws cloudformation describe-stacks \
         --stack-name "$STACK_NAME" \
         --region "$AWS_REGION" \
-        --query 'Stacks[0].Outputs[?OutputKey==`InstancePublicIP`].OutputValue' \
+        --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
         --output text)
     
     if [ -n "$instance_id" ]; then

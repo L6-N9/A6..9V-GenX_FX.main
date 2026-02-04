@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitor</title>
+    <style>
+        body { font-family: sans-serif; }
+        .metric { margin-bottom: 1em; }
+    </style>
+</head>
+<body>
+    <h1>System Monitor</h1>
+    <div id="metrics"></div>
+
+    <script>
+        async function fetchMetrics() {
+            const response = await fetch('/api/v1/monitor');
+            const data = await response.json();
+            const metricsDiv = document.getElementById('metrics');
+            metricsDiv.innerHTML = `
+                <div class="metric"><strong>Timestamp:</strong> ${data.timestamp}</div>
+                <div class="metric"><strong>CPU Usage:</strong> ${data.cpu_usage}%</div>
+                <div class="metric"><strong>Memory Usage:</strong> ${data.memory.percent}%</div>
+                <div class="metric"><strong>Disk Usage:</strong> ${data.disk.percent}%</div>
+            `;
+        }
+
+        setInterval(fetchMetrics, 5000);
+        fetchMetrics();
+    </script>
+</body>
+</html>

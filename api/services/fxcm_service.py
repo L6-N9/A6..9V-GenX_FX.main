@@ -6,12 +6,14 @@ Provides WebSocket connections for live data streaming and REST API for historic
 import asyncio
 import json
 import logging
-import websockets
-import aiohttp
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional
+
+import aiohttp
 import pandas as pd
+import websockets
+
 from ..config.settings import get_settings
 
 settings = get_settings()
@@ -171,7 +173,7 @@ class FXCMService:
             "candle": [],
             "trade": [],
         }
-        
+
     async def __aenter__(self):
         """Asynchronous context manager entry to connect the service."""
         await self.connect()
@@ -207,7 +209,7 @@ class FXCMService:
         except Exception as e:
             logger.error(f"Failed to connect to FXCM API: {e}")
             raise
-    
+
     async def disconnect(self):
         """Closes the WebSocket and aiohttp session."""
         try:
@@ -222,7 +224,7 @@ class FXCMService:
 
         except Exception as e:
             logger.error(f"Error disconnecting from FXCM API: {e}")
-    
+
     async def _test_connection(self):
         """
         Tests the API connection by fetching account details.
@@ -240,7 +242,7 @@ class FXCMService:
 
             data = await response.json()
             logger.info(f"Connected to account: {data.get('account', {}).get('id')}")
-    
+
     async def get_historical_data(
         self,
         instrument: str,
@@ -268,47 +270,50 @@ class FXCMService:
         """
         if not self.is_connected:
             raise ConnectionError("Not connected to FXCM API")
-        
+
         url = f"{self.credentials.base_url}/v3/instruments/{instrument}/candles"
-        
-        params = {
-            "granularity": timeframe,
-            "count": count
-        }
-        
+
+        params = {"granularity": timeframe, "count": count}
+
         if start_time:
             params["from"] = start_time.isoformat() + "Z"
         if end_time:
             params["to"] = end_time.isoformat() + "Z"
-        
+
         try:
             async with self.session.get(url, params=params) as response:
                 if response.status != 200:
-                    raise Exception(f"Failed to fetch historical data: {response.status}")
-                
+                    raise Exception(
+                        f"Failed to fetch historical data: {response.status}"
+                    )
+
                 data = await response.json()
                 candles = []
-                
+
                 for candle_data in data.get("candles", []):
                     if candle_data["complete"]:
-                        candles.append(Candle(
-                            instrument=instrument,
-                            timestamp=datetime.fromisoformat(candle_data["time"].replace("Z", "+00:00")),
-                            open=float(candle_data["mid"]["o"]),
-                            high=float(candle_data["mid"]["h"]),
-                            low=float(candle_data["mid"]["l"]),
-                            close=float(candle_data["mid"]["c"]),
-                            volume=int(candle_data["volume"]),
-                            timeframe=timeframe
-                        ))
-                
+                        candles.append(
+                            Candle(
+                                instrument=instrument,
+                                timestamp=datetime.fromisoformat(
+                                    candle_data["time"].replace("Z", "+00:00")
+                                ),
+                                open=float(candle_data["mid"]["o"]),
+                                high=float(candle_data["mid"]["h"]),
+                                low=float(candle_data["mid"]["l"]),
+                                close=float(candle_data["mid"]["c"]),
+                                volume=int(candle_data["volume"]),
+                                timeframe=timeframe,
+                            )
+                        )
+
                 logger.info(f"Fetched {len(candles)} candles for {instrument}")
                 return candles
-                
+
         except Exception as e:
             logger.error(f"Error fetching historical data: {e}")
             raise
-    
+
     async def get_current_prices(self, instruments: List[str]) -> Dict[str, MarketData]:
         """
         Gets the current bid/ask prices for a list of instruments.
@@ -325,37 +330,40 @@ class FXCMService:
         """
         if not self.is_connected:
             raise ConnectionError("Not connected to FXCM API")
-        
+
         url = f"{self.credentials.base_url}/v3/accounts/{self.credentials.account_id}/pricing"
-        
-        params = {
-            "instruments": ",".join(instruments)
-        }
-        
+
+        params = {"instruments": ",".join(instruments)}
+
         try:
             async with self.session.get(url, params=params) as response:
                 if response.status != 200:
-                    raise Exception(f"Failed to fetch current prices: {response.status}")
-                
+                    raise Exception(
+                        f"Failed to fetch current prices: {response.status}"
+                    )
+
                 data = await response.json()
                 prices = {}
-                
+
                 for price_data in data.get("prices", []):
                     instrument = price_data["instrument"]
                     prices[instrument] = MarketData(
                         instrument=instrument,
                         bid=float(price_data["bids"][0]["price"]),
                         ask=float(price_data["asks"][0]["price"]),
-                        spread=float(price_data["asks"][0]["price"]) - float(price_data["bids"][0]["price"]),
-                        timestamp=datetime.fromisoformat(price_data["time"].replace("Z", "+00:00"))
+                        spread=float(price_data["asks"][0]["price"])
+                        - float(price_data["bids"][0]["price"]),
+                        timestamp=datetime.fromisoformat(
+                            price_data["time"].replace("Z", "+00:00")
+                        ),
                     )
-                
+
                 return prices
-                
+
         except Exception as e:
             logger.error(f"Error fetching current prices: {e}")
             raise
-    
+
     async def start_price_stream(self, instruments: List[str]):
         """
         Starts a real-time price stream using a WebSocket connection.
@@ -394,7 +402,7 @@ class FXCMService:
         except Exception as e:
             logger.error(f"Error in price streaming: {e}")
             raise
-    
+
     async def _handle_price_update(self, data: Dict[str, Any]):
         """
         Handles an incoming price update from the WebSocket.
@@ -429,7 +437,7 @@ class FXCMService:
                             callback(market_data)
                     except Exception as e:
                         logger.error(f"Error in price callback: {e}")
-    
+
     def subscribe_to_prices(self, callback: Callable[[MarketData], Any]):
         """
         Subscribes a callback function to receive real-time price updates.
@@ -456,7 +464,7 @@ class FXCMService:
             callback: A function or coroutine to be called with trade update data.
         """
         self.subscribers["trade"].append(callback)
-    
+
     async def place_order(self, signal: TradeSignal) -> Dict[str, Any]:
         """
         Places a trading order based on a provided signal.
@@ -473,53 +481,55 @@ class FXCMService:
         """
         if not self.is_connected:
             raise ConnectionError("Not connected to FXCM API")
-        
+
         url = f"{self.credentials.base_url}/v3/accounts/{self.credentials.account_id}/orders"
-        
+
         # Convert signal to FXCM order format
         order_data = {
             "order": {
                 "instrument": signal.instrument,
-                "units": int(signal.volume * 10000) if signal.action == "BUY" else -int(signal.volume * 10000),
+                "units": (
+                    int(signal.volume * 10000)
+                    if signal.action == "BUY"
+                    else -int(signal.volume * 10000)
+                ),
                 "type": "MARKET",
-                "timeInForce": "FOK"
+                "timeInForce": "FOK",
             }
         }
-        
+
         # Add stop loss if specified
         if signal.stop_loss:
-            order_data["order"]["stopLossOnFill"] = {
-                "price": str(signal.stop_loss)
-            }
-        
+            order_data["order"]["stopLossOnFill"] = {"price": str(signal.stop_loss)}
+
         # Add take profit if specified
         if signal.take_profit:
-            order_data["order"]["takeProfitOnFill"] = {
-                "price": str(signal.take_profit)
-            }
-        
+            order_data["order"]["takeProfitOnFill"] = {"price": str(signal.take_profit)}
+
         try:
             async with self.session.post(url, json=order_data) as response:
                 if response.status not in [200, 201]:
                     error_text = await response.text()
-                    raise Exception(f"Failed to place order: {response.status} - {error_text}")
-                
+                    raise Exception(
+                        f"Failed to place order: {response.status} - {error_text}"
+                    )
+
                 result = await response.json()
                 logger.info(f"Order placed successfully: {result}")
-                
+
                 # Notify trade subscribers
                 for callback in self.subscribers["trade"]:
                     try:
                         await callback(result)
                     except Exception as e:
                         logger.error(f"Error in trade callback: {e}")
-                
+
                 return result
-                
+
         except Exception as e:
             logger.error(f"Error placing order: {e}")
             raise
-    
+
     async def get_account_info(self) -> Dict[str, Any]:
         """
         Gets account information, including balance and equity.
@@ -533,21 +543,21 @@ class FXCMService:
         """
         if not self.is_connected:
             raise ConnectionError("Not connected to FXCM API")
-        
+
         url = f"{self.credentials.base_url}/v3/accounts/{self.credentials.account_id}"
-        
+
         try:
             async with self.session.get(url) as response:
                 if response.status != 200:
                     raise Exception(f"Failed to fetch account info: {response.status}")
-                
+
                 data = await response.json()
                 return data.get("account", {})
-                
+
         except Exception as e:
             logger.error(f"Error fetching account info: {e}")
             raise
-    
+
     async def get_open_positions(self) -> List[Dict[str, Any]]:
         """
         Gets a list of all open positions for the account.
@@ -561,21 +571,21 @@ class FXCMService:
         """
         if not self.is_connected:
             raise ConnectionError("Not connected to FXCM API")
-        
+
         url = f"{self.credentials.base_url}/v3/accounts/{self.credentials.account_id}/positions"
-        
+
         try:
             async with self.session.get(url) as response:
                 if response.status != 200:
                     raise Exception(f"Failed to fetch positions: {response.status}")
-                
+
                 data = await response.json()
                 return data.get("positions", [])
-                
+
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
             raise
-    
+
     def to_dataframe(self, candles: List[Candle]) -> pd.DataFrame:
         """
         Converts a list of Candle objects to a pandas DataFrame.

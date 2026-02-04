@@ -4,35 +4,41 @@ Manages position sizes, risk limits, and portfolio risk
 """
 
 import math
-from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple
+
+from .sortino_ratio_analyzer import SortinoRatioAnalyzer
 
 # Try to import pandas and numpy, but provide fallbacks if not available
 try:
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
     PANDAS_AVAILABLE = True
     NUMPY_AVAILABLE = True
 except ImportError:
     PANDAS_AVAILABLE = False
     NUMPY_AVAILABLE = False
+
     # Create simple fallback classes
     class pd:
         @staticmethod
         def Timestamp():
             return datetime.now()
-    
+
     class np:
         @staticmethod
         def round(x, decimals=0):
             return round(x, decimals)
 
+
 class RiskLevel(Enum):
     CONSERVATIVE = "conservative"
     MODERATE = "moderate"
     AGGRESSIVE = "aggressive"
+
 
 @dataclass
 class PositionInfo:
@@ -58,6 +64,7 @@ class PositionInfo:
     risk_amount: float
     risk_percent: float
     max_loss: float
+
 
 class PositionSizer:
     """
@@ -95,18 +102,19 @@ class PositionSizer:
         self.max_risk_per_trade = max_risk_per_trade
         self.max_portfolio_risk = max_portfolio_risk
         self.risk_level = risk_level
-        
+        self.sortino_analyzer = SortinoRatioAnalyzer()
+
         # Risk multipliers based on risk level
         self.risk_multipliers = {
             RiskLevel.CONSERVATIVE: 0.5,
             RiskLevel.MODERATE: 1.0,
-            RiskLevel.AGGRESSIVE: 2.0
+            RiskLevel.AGGRESSIVE: 2.0,
         }
-        
+
         # Active positions tracking
         self.active_positions = {}
         self.position_history = []
-        
+
     def calculate_position_size(
         self,
         symbol: str,
@@ -137,34 +145,38 @@ class PositionSizer:
                 raise ValueError("Entry price and stop loss must be positive")
 
             confidence = max(0.0, min(1.0, confidence))  # Clamp to 0-1
-            
+
             # Calculate risk per pip/point
             price_difference = abs(entry_price - stop_loss)
             if price_difference == 0:
                 price_difference = entry_price * 0.01  # Default 1% if no stop loss
-            
+
             # Adjust risk based on confidence and risk level
             base_risk = self.max_risk_per_trade
             risk_multiplier = self.risk_multipliers[self.risk_level]
             adjusted_risk = base_risk * risk_multiplier * confidence
-            
+
             # Reduce risk if portfolio is concentrated
-            portfolio_risk_adjustment = self._calculate_portfolio_risk_adjustment(current_positions)
+            portfolio_risk_adjustment = self._calculate_portfolio_risk_adjustment(
+                current_positions
+            )
             final_risk = adjusted_risk * portfolio_risk_adjustment
-            
+
             # Calculate risk amount in account currency
             risk_amount = self.account_balance * final_risk
-            
+
             # Calculate position size
             position_size = risk_amount / price_difference
-            
+
             # Apply position size limits
             position_size = self._apply_position_limits(position_size, entry_price)
-            
+
             # Calculate actual risk and take profit
             actual_risk = position_size * price_difference
-            take_profit = self._calculate_take_profit(entry_price, stop_loss, confidence)
-            
+            take_profit = self._calculate_take_profit(
+                entry_price, stop_loss, confidence
+            )
+
             return PositionInfo(
                 symbol=symbol,
                 entry_price=entry_price,
@@ -173,16 +185,14 @@ class PositionSizer:
                 take_profit=take_profit,
                 risk_amount=actual_risk,
                 risk_percent=actual_risk / self.account_balance,
-                max_loss=actual_risk
+                max_loss=actual_risk,
             )
-            
+
         except Exception as e:
             print(f"Warning: Error calculating position size: {e}")
             return self._default_position_info(symbol, entry_price, stop_loss)
-    
-    def _calculate_portfolio_risk_adjustment(
-        self, current_positions: int
-    ) -> float:
+
+    def _calculate_portfolio_risk_adjustment(self, current_positions: int) -> float:
         """
         Calculates a risk adjustment factor based on portfolio concentration.
 
@@ -200,10 +210,8 @@ class PositionSizer:
             return 0.6
         else:
             return 0.4  # Heavily reduce risk when portfolio is over-concentrated
-    
-    def _apply_position_limits(
-        self, position_size: float, entry_price: float
-    ) -> float:
+
+    def _apply_position_limits(self, position_size: float, entry_price: float) -> float:
         """
         Applies minimum and maximum position size limits to a calculated size.
 
@@ -223,7 +231,7 @@ class PositionSizer:
         # Apply limits and round to a standard lot size format
         sized_position = max(min_position, min(position_size, max_position))
         return round(sized_position, 2)
-    
+
     def _calculate_take_profit(
         self, entry_price: float, stop_loss: float, confidence: float
     ) -> float:
@@ -252,7 +260,7 @@ class PositionSizer:
             take_profit = entry_price - (stop_distance * rr_ratio)
 
         return round(take_profit, 5)  # Round for forex prices
-    
+
     def _default_position_info(
         self, symbol: str, entry_price: float, stop_loss: float
     ) -> PositionInfo:
@@ -277,7 +285,7 @@ class PositionSizer:
             risk_percent=0.01,
             max_loss=self.account_balance * 0.01,
         )
-    
+
     def add_position(self, position_info: PositionInfo) -> bool:
         """
         Adds a new position to the active positions tracker if it's within portfolio risk limits.
@@ -307,7 +315,7 @@ class PositionSizer:
         except Exception as e:
             print(f"Warning: Error adding position: {e}")
             return False
-    
+
     def remove_position(
         self,
         symbol: str,
@@ -358,7 +366,7 @@ class PositionSizer:
         except Exception as e:
             print(f"Warning: Error removing position: {e}")
             return False
-    
+
     def _calculate_total_portfolio_risk(self) -> float:
         """
         Calculates the total current risk of all active positions.
@@ -367,7 +375,7 @@ class PositionSizer:
             float: The sum of risk percentages of all active positions.
         """
         return sum(pos.risk_percent for pos in self.active_positions.values())
-    
+
     def get_portfolio_summary(self) -> Dict[str, Any]:
         """
         Gets a summary of the current portfolio's risk and exposure.
@@ -400,7 +408,7 @@ class PositionSizer:
         except Exception as e:
             print(f"Warning: Error calculating portfolio summary: {e}")
             return {}
-    
+
     def update_account_balance(self, new_balance: float):
         """
         Updates the account balance and recalculates risk percentages for active positions.
@@ -423,7 +431,7 @@ class PositionSizer:
 
         except Exception as e:
             print(f"Warning: Error updating account balance: {e}")
-    
+
     def can_open_position(self, risk_amount: float) -> bool:
         """
         Checks if a new position can be opened based on available portfolio risk.
@@ -447,7 +455,7 @@ class PositionSizer:
         except Exception as e:
             print(f"Warning: Error checking position capacity: {e}")
             return False
-    
+
     def get_risk_metrics(self) -> Dict[str, float]:
         """
         Gets a dictionary of detailed risk metrics for the current portfolio.
@@ -475,14 +483,47 @@ class PositionSizer:
                 "current_portfolio_risk": total_risk_percent,
                 "average_position_risk": avg_position_risk,
                 "risk_concentration": risk_concentration,
-                "remaining_capacity": portfolio_summary.get("remaining_risk_capacity", 0),
+                "remaining_capacity": portfolio_summary.get(
+                    "remaining_risk_capacity", 0
+                ),
                 "risk_multiplier": self.risk_multipliers[self.risk_level],
             }
 
         except Exception as e:
             print(f"Warning: Error calculating risk metrics: {e}")
             return {}
-    
+
+    def get_sortino_ratio_assessment(self) -> Dict[str, Any]:
+        """
+        Calculates and assesses the Sortino Ratio for the trading history.
+
+        Returns:
+            Dict[str, Any]: A dictionary with the Sortino Ratio and a qualitative assessment.
+        """
+        if not self.position_history:
+            return {"sortino_ratio": 0, "assessment": "Not enough data"}
+
+        returns = [
+            p["profit_loss"]
+            for p in self.position_history
+            if p["profit_loss"] is not None
+        ]
+        if len(returns) < 2:
+            return {"sortino_ratio": 0, "assessment": "Not enough data"}
+
+        sortino_ratio = self.sortino_analyzer.calculate_sortino_ratio(returns)
+
+        if sortino_ratio > 2.0:
+            assessment = "Excellent"
+        elif sortino_ratio > 1.0:
+            assessment = "Good"
+        elif sortino_ratio > 0.0:
+            assessment = "Acceptable"
+        else:
+            assessment = "Poor"
+
+        return {"sortino_ratio": sortino_ratio, "assessment": assessment}
+
     def set_risk_level(self, risk_level: RiskLevel):
         """
         Updates the risk level for the position sizer.

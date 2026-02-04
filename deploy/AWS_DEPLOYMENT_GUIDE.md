@@ -140,30 +140,7 @@ nano .env
 ```
 
 Required environment variables:
-```env
-# Database
-DATABASE_URL=postgresql://username:password@host:port/database
-
-# Redis
-REDIS_URL=redis://host:port
-
-# Security
-SECRET_KEY=your-secret-key
-
-# Trading APIs
-BYBIT_API_KEY=your-bybit-api-key
-BYBIT_API_SECRET=your-bybit-api-secret
-
-# Discord Bot (optional)
-DISCORD_TOKEN=your-discord-token
-
-# Telegram Bot (optional)
-TELEGRAM_TOKEN=your-telegram-token
-
-# Environment
-ENVIRONMENT=production
-LOG_LEVEL=INFO
-```
+For a complete list of environment variables, refer to the `API_KEY_SETUP.md` file in the root of the repository.
 
 ## Deployment Process
 

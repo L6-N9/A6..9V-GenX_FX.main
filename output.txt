@@ -1,0 +1,16 @@
+                / 10000
+            )
+            adjusted_volume = base_volume * validation.recommended_position_size
+            adjusted_volume = min(adjusted_volume, risk_params.max_lot_size)
+
+            # Create trading signal
+            trading_signal = TradingSignal(
+                signal_id=f"{instrument}_{int(current_time.timestamp())}",
+                instrument=instrument,
+                action=prediction.signal,
+                volume=adjusted_volume,
+                stop_loss=self._calculate_stop_loss(market_data, prediction.signal),
+                take_profit=self._calculate_take_profit(market_data, prediction.signal),
+                confidence=adjusted_confidence,
+                comment=f"GenX AI - Conf: {adjusted_confidence:.2f}",
+            )

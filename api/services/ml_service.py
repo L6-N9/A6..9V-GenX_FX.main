@@ -1,9 +1,10 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
 
 class MLService:
     """
@@ -51,7 +52,7 @@ class MLService:
 
         # Mock prediction for now
         return {
-            "signal": "long",
+            "prediction": "long",
             "confidence": 0.85,
             "features": ["rsi", "macd", "volume"],
             "model_version": "1.0.0",
@@ -99,34 +100,6 @@ class MLService:
             str: 'healthy' if initialized, 'unhealthy' otherwise.
         """
         return "healthy" if self.initialized else "unhealthy"
-
-    async def batch_predict(
-        self, market_data_batch: Dict[str, Any], use_ensemble: bool = True
-    ) -> Dict[str, Dict[str, Any]]:
-        """
-        ⚡ Bolt: Add batch prediction to reduce model inference overhead.
-        Makes predictions for a batch of symbols.
-
-        Args:
-            market_data_batch (Dict[str, Any]): A dict mapping symbols to their market data.
-            use_ensemble (bool): Flag to use an ensemble model.
-
-        Returns:
-            Dict[str, Dict[str, Any]]: A dictionary mapping each symbol to its prediction.
-        """
-        if not self.initialized:
-            raise ValueError("ML Service not initialized")
-
-        tasks = [
-            self.predict(symbol, data, use_ensemble)
-            for symbol, data in market_data_batch.items()
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        return {
-            symbol: result
-            for symbol, result in zip(market_data_batch.keys(), results)
-            if not isinstance(result, Exception)
-        }
 
     async def start_model_monitoring(self):
         """

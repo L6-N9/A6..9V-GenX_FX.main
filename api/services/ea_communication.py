@@ -8,11 +8,12 @@ import json
 import logging
 import socket
 import struct
-from datetime import datetime
-from typing import Dict, List, Optional, Callable, Any
-from dataclasses import dataclass, asdict
 import threading
-from queue import Queue, Empty
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from queue import Empty, Queue
+from typing import Any, Callable, Dict, List, Optional
+
 from ..config.settings import get_settings
 
 settings = get_settings()
@@ -281,7 +282,7 @@ class EAConnection:
         self.receive_thread.start()
 
         logger.info(f"New EA connection from {address}")
-    
+
     def _receive_messages(self):
         """
         Continuously receives messages from the EA in a dedicated thread.
@@ -310,7 +311,7 @@ class EAConnection:
             logger.error(f"Error in receive thread for {self.address}: {e}")
         finally:
             self._disconnect()
-    
+
     def _process_buffer(self):
         """
         Processes the incoming data buffer to extract complete messages.
@@ -333,7 +334,7 @@ class EAConnection:
             asyncio.run_coroutine_threadsafe(
                 self.server._handle_message(message, self), self.server.loop
             )
-    
+
     async def send_signal(self, signal: TradingSignal) -> bool:
         """
         Sends a trading signal to the connected EA.
@@ -358,7 +359,7 @@ class EAConnection:
             logger.error(f"Error sending signal to EA {self.address}: {e}")
             self._disconnect()
             return False
-    
+
     async def send_command(self, command: str, params: Dict[str, Any] = None) -> bool:
         """
         Sends a command to the connected EA.
@@ -382,7 +383,7 @@ class EAConnection:
             logger.error(f"Error sending command to EA {self.address}: {e}")
             self._disconnect()
             return False
-    
+
     def _disconnect(self):
         """
         Closes the connection to the EA and notifies the server.
@@ -443,7 +444,7 @@ class EAServer:
 
         # Signal queue for broadcasting from other threads
         self.signal_queue: Queue[TradingSignal] = Queue()
-        
+
     async def start(self):
         """
         Starts the EA server, binds it to the host and port, and begins
@@ -472,7 +473,7 @@ class EAServer:
             logger.error(f"Error starting EA server: {e}")
             await self.stop()
             raise
-    
+
     async def stop(self):
         """Stops the EA server and closes all active connections."""
         if not self.is_running:
@@ -489,7 +490,7 @@ class EAServer:
             self.server_socket = None
 
         logger.info("EA Server stopped")
-    
+
     async def _accept_connections(self):
         """
         The main server loop for accepting new EA connections.
@@ -512,7 +513,7 @@ class EAServer:
                 if self.is_running:
                     logger.error(f"Error accepting connection: {e}")
                 await asyncio.sleep(1)
-    
+
     async def _process_signal_queue(self):
         """
         Processes any signals that have been queued for broadcasting.
@@ -523,7 +524,7 @@ class EAServer:
                 await self.broadcast_signal(signal)
         except Empty:
             pass  # Queue is empty, which is normal
-    
+
     def _remove_connection(self, connection: EAConnection):
         """
         Removes a disconnected connection from the active list.
@@ -533,10 +534,8 @@ class EAServer:
         """
         if connection in self.connections:
             self.connections.remove(connection)
-    
-    async def _handle_message(
-        self, message: Dict[str, Any], connection: EAConnection
-    ):
+
+    async def _handle_message(self, message: Dict[str, Any], connection: EAConnection):
         """
         Handles a decoded message from an EA connection.
 
@@ -575,7 +574,7 @@ class EAServer:
 
         except Exception as e:
             logger.error(f"Error handling message from EA {connection.address}: {e}")
-    
+
     async def _notify_callbacks(
         self, message_type: str, data: Any, connection: EAConnection
     ):
@@ -596,7 +595,7 @@ class EAServer:
                     callback(data, connection)
             except Exception as e:
                 logger.error(f"Error in callback for {message_type}: {e}")
-    
+
     def subscribe_to_trade_results(
         self, callback: Callable[[TradeResult, EAConnection], Any]
     ):
@@ -619,9 +618,7 @@ class EAServer:
         """
         self.callbacks["ACCOUNT_STATUS"].append(callback)
 
-    def subscribe_to_heartbeat(
-        self, callback: Callable[[Dict, EAConnection], Any]
-    ):
+    def subscribe_to_heartbeat(self, callback: Callable[[Dict, EAConnection], Any]):
         """
         Subscribes a callback function to receive EA heartbeat messages.
 
@@ -638,7 +635,7 @@ class EAServer:
             callback: A function or coroutine to be called with error data and EAConnection.
         """
         self.callbacks["ERROR"].append(callback)
-    
+
     async def send_signal_to_ea(
         self, signal: TradingSignal, ea_address: Optional[tuple] = None
     ) -> bool:
@@ -665,7 +662,7 @@ class EAServer:
         else:
             # Broadcast to all EAs
             return await self.broadcast_signal(signal)
-    
+
     async def broadcast_signal(self, signal: TradingSignal) -> bool:
         """
         Broadcasts a trading signal to all connected EAs.
@@ -689,7 +686,7 @@ class EAServer:
             f"Signal broadcasted to {success_count}/{len(self.connections)} EAs"
         )
         return success_count > 0
-    
+
     async def send_command_to_all(
         self, command: str, params: Optional[Dict[str, Any]] = None
     ) -> int:
@@ -706,7 +703,7 @@ class EAServer:
         tasks = [conn.send_command(command, params) for conn in self.connections]
         results = await asyncio.gather(*tasks)
         return sum(1 for r in results if r)
-    
+
     def get_connected_eas(self) -> List[Dict[str, Any]]:
         """
         Gets information about all currently connected EAs.
@@ -723,7 +720,7 @@ class EAServer:
             }
             for conn in self.connections
         ]
-    
+
     def queue_signal(self, signal: TradingSignal):
         """
         Queues a signal for broadcasting. This method is thread-safe.

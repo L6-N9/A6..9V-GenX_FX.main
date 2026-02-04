@@ -4,26 +4,54 @@ Direct integration with FXCM's ForexConnect trading platform
 """
 
 import asyncio
-import logging
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Callable
 import json
-import time
-from dataclasses import dataclass
+import logging
 import os
 import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional
+
+import aiohttp
+import numpy as np
+import pandas as pd
 
 # Import ForexConnect (ensure virtual environment is activated)
 try:
     import forexconnect as fx
+
     FOREXCONNECT_AVAILABLE = True
 except ImportError:
     FOREXCONNECT_AVAILABLE = False
-    logging.warning("ForexConnect module not available. Install with: pip install forexconnect")
+    logging.warning(
+        "ForexConnect module not available. Install with: pip install forexconnect"
+    )
 
 logger = logging.getLogger(__name__)
+
+# List of potential server URLs
+SERVER_URLS = [
+    "http://www.fxcorporate.com/Hosts.jsp",
+    "https://www.fxcorporate.com/Hosts.jsp",
+    "http://www.fxcm.com/Hosts.jsp",
+    "https://www.fxcm.com/Hosts.jsp",
+    "http://www.fxcm.co.uk/Hosts.jsp",
+    "https://www.fxcm.co.uk/Hosts.jsp",
+    "http://www.fxcm.com.au/Hosts.jsp",
+    "https://www.fxcm.com.au/Hosts.jsp",
+    "http://www.fxcm.fr/Hosts.jsp",
+    "https://www.fxcm.fr/Hosts.jsp",
+    "http://www.fxcm.de/Hosts.jsp",
+    "https://www.fxcm.de/Hosts.jsp",
+    "http://www.fxcm.it/Hosts.jsp",
+    "https://www.fxcm.it/Hosts.jsp",
+    "http://www.fxcm.gr/Hosts.jsp",
+    "https://www.fxcm.gr/Hosts.jsp",
+    "http://www.fxcm.jp/Hosts.jsp",
+    "https://www.fxcm.jp/Hosts.jsp",
+]
+
 
 @dataclass
 class FXCMForexConnectConfig:
@@ -51,6 +79,8 @@ class FXCMForexConnectConfig:
     timeout: int = 30
     retry_attempts: int = 3
     auto_reconnect: bool = True
+    auto_select_server: bool = False
+
 
 class FXCMForexConnectProvider:
     """
@@ -87,43 +117,89 @@ class FXCMForexConnectProvider:
 
         self.config = FXCMForexConnectConfig(**config)
         self.forex_connect: Optional[fx.ForexConnect] = None
-        self.session: Optional[Any] = None  # The type depends on the forexconnect library
+        self.session: Optional[Any] = (
+            None  # The type depends on the forexconnect library
+        )
         self.is_connected = False
         self.last_error: Optional[str] = None
-        
+
         # Data caching
         self.price_cache = {}
         self.historical_cache = {}
         self.account_info = None
-        
+
         # Symbol mapping (standard to FXCM format)
         self.symbol_map = {
-            'EURUSD': 'EUR/USD',
-            'GBPUSD': 'GBP/USD', 
-            'USDJPY': 'USD/JPY',
-            'USDCHF': 'USD/CHF',
-            'AUDUSD': 'AUD/USD',
-            'USDCAD': 'USD/CAD',
-            'NZDUSD': 'NZD/USD',
-            'EURGBP': 'EUR/GBP',
-            'EURJPY': 'EUR/JPY',
-            'GBPJPY': 'GBP/JPY'
+            "EURUSD": "EUR/USD",
+            "GBPUSD": "GBP/USD",
+            "USDJPY": "USD/JPY",
+            "USDCHF": "USD/CHF",
+            "AUDUSD": "AUD/USD",
+            "USDCAD": "USD/CAD",
+            "NZDUSD": "NZD/USD",
+            "EURGBP": "EUR/GBP",
+            "EURJPY": "EUR/JPY",
+            "GBPJPY": "GBP/JPY",
         }
-        
+
         # Timeframe mapping for historical data
         self.timeframe_map = {
-            'M1': 'm1',
-            'M5': 'm5', 
-            'M15': 'm15',
-            'M30': 'm30',
-            'H1': 'H1',
-            'H4': 'H4',
-            'D1': 'D1',
-            'W1': 'W1'
+            "M1": "m1",
+            "M5": "m5",
+            "M15": "m15",
+            "M30": "m30",
+            "H1": "H1",
+            "H4": "H4",
+            "D1": "D1",
+            "W1": "W1",
         }
-        
-        logger.info(f"FXCM ForexConnect Provider initialized for {self.config.connection_type} environment")
-    
+
+        logger.info(
+            f"FXCM ForexConnect Provider initialized for {self.config.connection_type} environment"
+        )
+
+    async def _measure_latency(self, session: aiohttp.ClientSession, url: str) -> float:
+        """Measures the latency of a given URL."""
+        try:
+            start_time = time.monotonic()
+            async with session.get(url, timeout=5) as response:
+                await response.text()
+                end_time = time.monotonic()
+                latency = end_time - start_time
+                logger.info(
+                    f"Successfully connected to {url} with latency: {latency:.4f}s"
+                )
+                return latency
+        except Exception as e:
+            logger.warning(f"Failed to connect to {url}: {e}")
+            return float("inf")
+
+    async def find_best_server(self) -> str:
+        """Finds the best server from a list by measuring latency."""
+        async with aiohttp.ClientSession() as session:
+            tasks = [self._measure_latency(session, server) for server in SERVER_URLS]
+            latencies = await asyncio.gather(*tasks)
+
+        server_latencies = {
+            SERVER_URLS[i]: latencies[i] for i in range(len(SERVER_URLS))
+        }
+
+        reachable_servers = {
+            s: l for s, l in server_latencies.items() if l != float("inf")
+        }
+
+        if not reachable_servers:
+            logger.error("No reachable servers found.")
+            return ""
+
+        best_server = min(reachable_servers, key=reachable_servers.get)
+        min_latency = reachable_servers[best_server]
+        logger.info(
+            f"The best server is {best_server} with a latency of {min_latency:.4f}s"
+        )
+
+        return best_server
+
     async def connect(self) -> bool:
         """
         Establishes a connection to the FXCM platform using the ForexConnect API.
@@ -137,6 +213,18 @@ class FXCMForexConnectProvider:
                 return False
 
             logger.info("Connecting to FXCM ForexConnect...")
+
+            connection_url = self.config.url
+            if self.config.auto_select_server:
+                logger.info("Auto-selecting best server...")
+                best_server = await self.find_best_server()
+                if best_server:
+                    connection_url = best_server
+                else:
+                    logger.warning(
+                        "Could not find best server, falling back to default URL."
+                    )
+
             loop = asyncio.get_event_loop()
 
             # The forexconnect library is synchronous, so we run it in an executor
@@ -146,7 +234,7 @@ class FXCMForexConnectProvider:
                 lambda: self.forex_connect.login(
                     user_id=self.config.username,
                     password=self.config.password,
-                    url=self.config.url,
+                    url=connection_url,
                     connection=self.config.connection_type,
                     session_id=self.config.session_id,
                     pin=self.config.pin,
@@ -166,7 +254,7 @@ class FXCMForexConnectProvider:
             self.last_error = str(e)
             logger.error(f"Error connecting to FXCM ForexConnect: {e}")
             return False
-    
+
     async def disconnect(self):
         """Disconnects from the FXCM ForexConnect session."""
         try:
@@ -182,7 +270,7 @@ class FXCMForexConnectProvider:
 
         except Exception as e:
             logger.error(f"Error disconnecting from FXCM: {e}")
-    
+
     async def _load_account_info(self):
         """Loads and caches account information from the trading platform."""
         if not self.is_connected or not self.forex_connect:
@@ -216,10 +304,8 @@ class FXCMForexConnectProvider:
         except Exception as e:
             logger.error(f"Error loading account info: {e}")
             return None
-    
-    async def get_live_prices(
-        self, symbols: List[str]
-    ) -> Dict[str, Dict[str, float]]:
+
+    async def get_live_prices(self, symbols: List[str]) -> Dict[str, Dict[str, float]]:
         """
         Gets live prices for a list of specified symbols.
 
@@ -260,14 +346,14 @@ class FXCMForexConnectProvider:
                         "timestamp": datetime.now(),
                         "symbol": standard_symbol,
                     }
-            
+
             self.price_cache.update(prices)
             return prices
 
         except Exception as e:
             logger.error(f"Error getting live prices: {e}")
             return {}
-    
+
     async def get_historical_data(
         self,
         symbol: str,
@@ -331,7 +417,7 @@ class FXCMForexConnectProvider:
         except Exception as e:
             logger.error(f"Error getting historical data for {symbol}: {e}")
             return pd.DataFrame()
-    
+
     async def get_account_summary(self) -> Dict[str, Any]:
         """
         Gets a summary of the account, including balance and open positions.
@@ -370,14 +456,16 @@ class FXCMForexConnectProvider:
                 "positions": positions,
                 "total_positions": len(positions),
                 "total_pl": sum(pos["pl"] for pos in positions),
-                "connection_status": "connected" if self.is_connected else "disconnected",
+                "connection_status": (
+                    "connected" if self.is_connected else "disconnected"
+                ),
                 "last_update": datetime.now(),
             }
 
         except Exception as e:
             logger.error(f"Error getting account summary: {e}")
             return {}
-    
+
     async def health_check(self) -> bool:
         """
         Checks if the connection to the FXCM server is healthy.
@@ -397,7 +485,7 @@ class FXCMForexConnectProvider:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return False
-    
+
     def get_supported_symbols(self) -> List[str]:
         """Gets the list of standard symbols supported by this provider."""
         return list(self.symbol_map.keys())
@@ -428,37 +516,43 @@ class MockFXCMForexConnectProvider(FXCMForexConnectProvider):
         self.session = None
         self.is_connected = False
         self.last_error = None
-        
+
         # Mock data
         self.price_cache = {}
         self.historical_cache = {}
         self.account_info = {
-            'account_id': 'MOCK123456',
-            'balance': 50000.0,
-            'currency': 'USD',
-            'equity': 50000.0,
-            'margin': 0.0,
-            'free_margin': 50000.0
+            "account_id": "MOCK123456",
+            "balance": 50000.0,
+            "currency": "USD",
+            "equity": 50000.0,
+            "margin": 0.0,
+            "free_margin": 50000.0,
         }
-        
+
         # Same mappings as real provider
         self.symbol_map = {
-            'EURUSD': 'EUR/USD',
-            'GBPUSD': 'GBP/USD', 
-            'USDJPY': 'USD/JPY',
-            'USDCHF': 'USD/CHF',
-            'AUDUSD': 'AUD/USD',
-            'USDCAD': 'USD/CAD',
-            'NZDUSD': 'NZD/USD'
+            "EURUSD": "EUR/USD",
+            "GBPUSD": "GBP/USD",
+            "USDJPY": "USD/JPY",
+            "USDCHF": "USD/CHF",
+            "AUDUSD": "AUD/USD",
+            "USDCAD": "USD/CAD",
+            "NZDUSD": "NZD/USD",
         }
-        
+
         self.timeframe_map = {
-            'M1': 'm1', 'M5': 'm5', 'M15': 'm15', 'M30': 'm30',
-            'H1': 'H1', 'H4': 'H4', 'D1': 'D1', 'W1': 'W1'
+            "M1": "m1",
+            "M5": "m5",
+            "M15": "m15",
+            "M30": "m30",
+            "H1": "H1",
+            "H4": "H4",
+            "D1": "D1",
+            "W1": "W1",
         }
-        
+
         logger.info("Mock FXCM ForexConnect Provider initialized")
-    
+
     async def connect(self) -> bool:
         """Simulates a successful connection."""
         self.is_connected = True
@@ -470,9 +564,7 @@ class MockFXCMForexConnectProvider(FXCMForexConnectProvider):
         self.is_connected = False
         logger.info("Mock FXCM ForexConnect disconnected")
 
-    async def get_live_prices(
-        self, symbols: List[str]
-    ) -> Dict[str, Dict[str, float]]:
+    async def get_live_prices(self, symbols: List[str]) -> Dict[str, Dict[str, float]]:
         """
         Generates mock live prices for a list of symbols.
 
@@ -483,33 +575,38 @@ class MockFXCMForexConnectProvider(FXCMForexConnectProvider):
             Dict[str, Dict[str, float]]: A dictionary of mock price data.
         """
         import random
-        
+
         prices = {}
         base_prices = {
-            'EURUSD': 1.0850, 'GBPUSD': 1.2650, 'USDJPY': 148.50,
-            'USDCHF': 0.8950, 'AUDUSD': 0.6580, 'USDCAD': 1.3620, 'NZDUSD': 0.6120
+            "EURUSD": 1.0850,
+            "GBPUSD": 1.2650,
+            "USDJPY": 148.50,
+            "USDCHF": 0.8950,
+            "AUDUSD": 0.6580,
+            "USDCAD": 1.3620,
+            "NZDUSD": 0.6120,
         }
-        
+
         for symbol in symbols:
             if symbol in base_prices:
                 base_price = base_prices[symbol]
-                spread = 0.0002 if 'JPY' not in symbol else 0.02
-                
+                spread = 0.0002 if "JPY" not in symbol else 0.02
+
                 # Add some random variation
                 variation = random.uniform(-0.001, 0.001)
                 mid_price = base_price + variation
-                
+
                 prices[symbol] = {
-                    'bid': round(mid_price - spread/2, 5),
-                    'ask': round(mid_price + spread/2, 5),
-                    'spread': spread,
-                    'timestamp': datetime.now(),
-                    'symbol': symbol
+                    "bid": round(mid_price - spread / 2, 5),
+                    "ask": round(mid_price + spread / 2, 5),
+                    "spread": spread,
+                    "timestamp": datetime.now(),
+                    "symbol": symbol,
                 }
-        
+
         self.price_cache.update(prices)
         return prices
-    
+
     async def get_historical_data(
         self,
         symbol: str,
@@ -532,46 +629,53 @@ class MockFXCMForexConnectProvider(FXCMForexConnectProvider):
             pd.DataFrame: A DataFrame with mock OHLCV data.
         """
         import random
-        
+
         base_prices = {
-            'EURUSD': 1.0850, 'GBPUSD': 1.2650, 'USDJPY': 148.50,
-            'USDCHF': 0.8950, 'AUDUSD': 0.6580, 'USDCAD': 1.3620, 'NZDUSD': 0.6120
+            "EURUSD": 1.0850,
+            "GBPUSD": 1.2650,
+            "USDJPY": 148.50,
+            "USDCHF": 0.8950,
+            "AUDUSD": 0.6580,
+            "USDCAD": 1.3620,
+            "NZDUSD": 0.6120,
         }
-        
+
         if symbol not in base_prices:
             return pd.DataFrame()
-        
+
         # Generate mock data
         data = []
         current_price = base_prices[symbol]
         current_time = datetime.now() - timedelta(minutes=count)
-        
+
         for i in range(count):
             # Random walk
             change = random.gauss(0, 0.001)
             current_price += change
-            
+
             # Generate OHLC
             high = current_price + random.uniform(0, 0.002)
             low = current_price - random.uniform(0, 0.002)
             open_price = current_price + random.uniform(-0.001, 0.001)
             close_price = current_price + random.uniform(-0.001, 0.001)
-            
-            data.append({
-                'timestamp': current_time + timedelta(minutes=i),
-                'open': round(open_price, 5),
-                'high': round(high, 5),
-                'low': round(low, 5),
-                'close': round(close_price, 5),
-                'volume': random.randint(10, 1000)
-            })
-        
+
+            data.append(
+                {
+                    "timestamp": current_time + timedelta(minutes=i),
+                    "open": round(open_price, 5),
+                    "high": round(high, 5),
+                    "low": round(low, 5),
+                    "close": round(close_price, 5),
+                    "volume": random.randint(10, 1000),
+                }
+            )
+
         df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df.set_index('timestamp', inplace=True)
-        
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df.set_index("timestamp", inplace=True)
+
         return df
-    
+
     async def health_check(self) -> bool:
         """Simulates a health check; returns the connection status."""
         return self.is_connected

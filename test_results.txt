@@ -1,0 +1,4 @@
+Running GenX Trading Platform Tests...
+==================================================
+
+STDERR: /home/jules/.pyenv/versions/3.12.12/bin/python3: No module named pytest

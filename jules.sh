@@ -7,7 +7,7 @@ set -euo pipefail
 DOMAIN="remote.genxfx.org"
 DUCKDNS_DOMAIN="your-duckdns-subdomain.duckdns.org" # Default, can be overridden
 DEVICE_IP="10.62.78.114"
-BUILD_NUMBER="15.1.1.109SP06(OP001PF001AZ)"
+BUILD_NUMBER="LI9-15.1.2.145SP08(OP001PF001AZ)"
 HASHED_ID=$(echo -n "$BUILD_NUMBER" | openssl dgst -sha256 | awk '{print $2}')
 FIREBASE_PROJECT="genxfx"
 PRIVACY_EMAIL="189807f4de4d86bd181553d72ab3f.protect@withheldforprivacy.com"
@@ -100,6 +100,18 @@ send_alert() {
   # echo "Agent offline" | msmtp -a default "$PRIVACY_EMAIL"
 }
 
+# === STEP 8: GCP Multi-Project Deployment ===
+# This function triggers the deployment of the application to multiple GCP projects.
+deploy_gcp() {
+  echo "[*] Triggering Multi-Project GCP Deployment..."
+  if [ -f "./scripts/linux/deploy_to_all_gcp.sh" ]; then
+    bash ./scripts/linux/deploy_to_all_gcp.sh
+  else
+    echo "[!] Error: Deployment script not found at ./scripts/linux/deploy_to_all_gcp.sh"
+    return 1
+  fi
+}
+
 # === DDNS Auto-Update (Free Tier) ===
 # This function updates a DuckDNS record.
 # Usage: ./jules.sh ddns <your-duckdns-domain>
@@ -123,6 +135,7 @@ case "${1:-}" in
   note-sync) note_sync ;;
   vscode) vscode_hook ;;
   alert) send_alert ;;
+  deploy-gcp) deploy_gcp ;;
   ddns) ddns_update "${2:-}" ;;
   all)
     reverse_proxy
@@ -131,6 +144,6 @@ case "${1:-}" in
     note_sync
     ;;
   *)
-    echo "Usage: $0 {reverse-proxy|device-id|firebase|github-oauth|note-sync|vscode|alert|ddns|all}"
+    echo "Usage: $0 {reverse-proxy|device-id|firebase|github-oauth|note-sync|vscode|alert|deploy-gcp|ddns|all}"
     ;;
 esac

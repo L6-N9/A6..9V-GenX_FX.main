@@ -5,7 +5,7 @@ import {
   tradingAccounts, 
   tradingBots, 
   educationalResources 
-} from '../shared/schema.js';
+} from '@shared/schema';
 
 /**
  * Seeds the database with initial data, including a demo user, trading account,

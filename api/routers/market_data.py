@@ -1,12 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Optional
 import logging
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..models.schemas import MarketData
 from ..utils.auth import get_current_user
 
 router = APIRouter(prefix="/market-data", tags=["market-data"])
 logger = logging.getLogger(__name__)
+
 
 @router.get("/", response_model=List[MarketData])
 async def get_market_data(
@@ -32,10 +34,9 @@ async def get_market_data(
     # Mock implementation for now
     return []
 
+
 @router.get("/{symbol}", response_model=MarketData)
-async def get_symbol_data(
-    symbol: str, current_user: dict = Depends(get_current_user)
-):
+async def get_symbol_data(symbol: str, current_user: dict = Depends(get_current_user)):
     """
     Retrieves market data for a specific symbol.
 

@@ -1,0 +1,37 @@
+# act_runner configuration template
+log:
+  level: info
+
+runner:
+  file: .runner
+  capacity: 1
+  envs:
+    # Set environment variables for the runner jobs
+  timeout: 3h
+  shutdown_timeout: 5s
+  fetch_timeout: 5s
+  fetch_interval: 2s
+  labels:
+    - "ubuntu-latest:docker://node:20-bullseye"
+    - "ubuntu-22.04:docker://node:20-bullseye"
+    - "ubuntu-20.04:docker://node:20-bullseye"
+    - "windows-latest:host"
+
+cache:
+  enabled: true
+  dir: ""
+  host: ""
+  port: 0
+  external_server: ""
+
+container:
+  network: ""
+  privileged: false
+  options: ""
+  workdir_parent: ""
+  valid_volumes: []
+  docker_host: ""
+  force_pull: false
+
+host:
+  workdir_parent: ""

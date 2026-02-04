@@ -1,7 +1,8 @@
-
 import time
-import psutil
 from datetime import datetime
+
+import psutil
+
 
 def get_system_health():
     """

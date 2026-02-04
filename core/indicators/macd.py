@@ -1,7 +1,10 @@
 from typing import Dict, Tuple
+
 import numpy as np
 import pandas as pd
+
 from .moving_average import MovingAverage
+
 
 class MACD:
     """
@@ -14,7 +17,9 @@ class MACD:
         ma (MovingAverage): An instance of the MovingAverage calculator.
     """
 
-    def __init__(self, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9):
+    def __init__(
+        self, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9
+    ):
         """
         Initializes the MACD calculator with specified periods.
 
@@ -55,24 +60,33 @@ class MACD:
             "histogram": histogram.iloc[-1] if not histogram.empty else 0,
         }
 
+
 def calculate_macd(
-    prices: pd.Series, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9
-) -> Tuple[float, float, float]:
+    prices: pd.Series,
+    fast_period: int = 12,
+    slow_period: int = 26,
+    signal_period: int = 9,
+) -> Tuple[pd.Series, pd.Series, pd.Series]:
     """
     A convenience function to calculate MACD values.
-
     This function is provided for backward compatibility or simpler use cases.
-
     Args:
         prices (pd.Series): A pandas Series of closing prices.
         fast_period (int): The period for the fast EMA.
         slow_period (int): The period for the slow EMA.
         signal_period (int): The period for the signal line EMA.
-
     Returns:
-        Tuple[float, float, float]: A tuple containing the latest MACD line,
-                                    signal line, and histogram values.
+        Tuple[pd.Series, pd.Series, pd.Series]: A tuple containing the MACD line,
+                                    signal line, and histogram as pandas Series.
     """
-    macd_indicator = MACD(fast_period, slow_period, signal_period)
-    result = macd_indicator.calculate(prices)
-    return result["macd"], result["signal"], result["histogram"]
+    if not isinstance(prices, pd.Series):
+        prices = pd.Series(prices)
+
+    ma = MovingAverage()
+    fast_ema = ma.ema(prices, fast_period)
+    slow_ema = ma.ema(prices, slow_period)
+    macd_line = fast_ema - slow_ema
+    signal_line = ma.ema(macd_line, signal_period)
+    histogram = macd_line - signal_line
+
+    return macd_line, signal_line, histogram

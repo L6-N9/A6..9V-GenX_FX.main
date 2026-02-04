@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 // Resource schema
 export const resourceSchema = z.object({
@@ -47,3 +49,93 @@ export const resourcesResponseSchema = z.object({
 });
 
 export type ResourcesResponse = z.infer<typeof resourcesResponseSchema>;
+
+// --- Drizzle ORM Tables ---
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+});
+
+export const tradingAccounts = pgTable("trading_accounts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  accountName: text("account_name").notNull(),
+  broker: text("broker").default("exness"),
+  accountId: text("account_id"),
+  platform: text("platform"),
+  balance: text("balance"),
+  currency: text("currency").default("USD"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const positions = pgTable("positions", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").references(() => tradingAccounts.id),
+  symbol: text("symbol").notNull(),
+  type: text("type").notNull(),
+  volume: real("volume").notNull(),
+  openPrice: real("open_price").notNull(),
+  openTime: timestamp("open_time").notNull(),
+  status: text("status").default("open"),
+  profit: real("profit"),
+});
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const educationalResources = pgTable("educational_resources", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  skillLevel: text("skill_level"),
+  category: text("category"),
+  resourceType: text("resource_type"),
+  duration: text("duration"),
+  imageUrl: text("image_url"),
+  featured: boolean("featured").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  url: text("url"),
+  tags: jsonb("tags"),
+  rating: text("rating"),
+});
+
+export const tradingBots = pgTable("trading_bots", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  accountId: integer("account_id").references(() => tradingAccounts.id),
+  name: text("name").notNull(),
+  strategy: text("strategy").notNull(),
+  symbols: jsonb("symbols"),
+  parameters: jsonb("parameters"),
+  status: text("status").default("stopped"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  tradingAccounts: many(tradingAccounts),
+  notifications: many(notifications),
+}));
+
+export const tradingAccountsRelations = relations(tradingAccounts, ({ one, many }) => ({
+  user: one(users, {
+    fields: [tradingAccounts.userId],
+    references: [users.id],
+  }),
+  positions: many(positions),
+}));

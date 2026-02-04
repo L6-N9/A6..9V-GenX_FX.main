@@ -1,89 +1,97 @@
 # Core ML and Data Science
-numpy>=1.24.0,<2.0.0
-pandas>=2.0.0,<3.0.0
-scikit-learn>=1.3.0,<2.0.0
-xgboost>=1.7.0,<4.0.0
-lightgbm>=4.0.0,<5.0.0
+numpy>=1.26.0
+pandas>=2.2.0,<3.0.0
+scikit-learn>=1.5.0,<2.0.0
+xgboost>=2.1.0,<4.0.0
+lightgbm>=4.5.0,<5.0.0
 
 # Technical Analysis and Financial Data
-ta-lib>=0.4.26
-yfinance>=0.2.18,<1.0.0
+ta-lib>=0.6.0
+yfinance>=0.2.50,<1.0.0
 mplfinance>=0.12.9b7
 
 # Machine Learning Extensions  
-joblib>=1.3.0,<2.0.0
-scipy>=1.11.0,<2.0.0
-matplotlib>=3.7.0,<4.0.0
-seaborn>=0.12.0,<1.0.0
+joblib==1.4.2
+scipy==1.15.3
+matplotlib>=3.10.0,<4.0.0
+seaborn>=0.13.0,<1.0.0
 
 # Data Processing
-aiohttp>=3.8.0,<4.0.0
-aiofiles>=23.0.0,<24.0.0
+aiohttp>=3.10.0,<4.0.0
+aiofiles>=24.0.0,<25.0.0
 asyncio-mqtt>=0.16.0,<1.0.0
 
 # Excel and CSV Processing
 openpyxl>=3.1.0,<4.0.0
-xlsxwriter>=3.1.0,<4.0.0
+xlsxwriter>=3.2.0,<4.0.0
 
 # Database and Storage
 sqlalchemy>=2.0.0,<3.0.0
-alembic>=1.12.0,<2.0.0
-redis>=4.6.0,<5.0.0
+alembic>=1.14.0,<2.0.0
+redis>=5.0.0,<6.0.0
 
 # Web Framework
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-gunicorn>=21.2.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+gunicorn>=23.0.0
 
 # HTTP and Networking
-requests>=2.31.0,<3.0.0
-websockets>=11.0.0,<12.0.0
+requests>=2.32.0,<3.0.0
+websockets>=14.0.0,<15.0.0
 
 # Configuration and Utilities
-pydantic>=2.0.0,<3.0.0
-pydantic-settings>=2.0.0,<3.0.0
+pydantic>=2.10.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
 python-dotenv>=1.0.0,<2.0.0
 pyyaml>=6.0,<7.0
 click>=8.1.0,<9.0.0
 loguru>=0.7.0,<1.0.0
-psutil>=5.9.0,<6.0.0
+psutil>=6.1.0,<7.0.0
 
 # Authentication and Security
 python-jose[cryptography]>=3.3.0,<4.0.0
 passlib[bcrypt]>=1.7.4,<2.0.0
+cryptography>=41.0.0
 
 # Trading and Financial APIs
-ccxt>=4.0.0,<5.0.0
+ccxt>=4.4.0,<5.0.0
 python-binance>=1.0.0,<2.0.0
 
 # AI and ML Services
-google-generativeai>=0.7.0,<1.0.0
+google-generativeai>=0.8.0,<1.0.0
 
 # Data Sources
-praw>=7.7.1,<8.0.0
+praw>=7.8.0,<8.0.0
 newsapi-python>=0.2.7,<1.0.0
 finnhub-python>=2.4.19,<3.0.0
 alpha_vantage>=2.3.1,<3.0.0
 
 # Statistics and Analysis
-statsmodels>=0.14.0,<1.0.0
-typing-extensions>=4.7.1,<5.0.0
+statsmodels==0.14.2
+typing-extensions>=4.12.0,<5.0.0
 
 # Testing
-pytest>=7.4.0,<8.0.0
-pytest-cov>=4.1.0,<5.0.0
-pytest-asyncio>=0.21.0,<1.0.0
+pytest>=8.3.0,<9.0.0
+pytest-cov>=5.0.0,<7.0.0
+pytest-asyncio>=0.24.0,<1.0.0
 
 # Code Quality
-black>=23.0.0,<24.0.0
-flake8>=6.0.0,<7.0.0
-isort>=5.12.0,<6.0.0
-bandit>=1.7.0,<2.0.0
-safety>=2.3.0,<3.0.0
+black>=26.1.0
+flake8>=7.1.0,<8.0.0
+isort>=5.13.0,<6.0.0
+bandit>=1.8.0,<2.0.0
+safety>=3.3.0,<4.0.0
 
 # Notification Support (Optional)
 # python-telegram-bot>=20.0
 # slack-sdk>=3.21.0
+# For WhatsApp: Use WhatsApp Business API or third-party services in production
 
 # Web server support for health checks
 # No additional web framework needed, using built-in http.server
+optuna>=4.2.0
+tensorflow>=2.17.0
+httpx>=0.27.0
+msal>=1.20.0,<2.0.0
+typer>=0.9.0,<1.0.0
+rich>=13.0.0,<14.0.0

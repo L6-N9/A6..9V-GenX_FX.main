@@ -23,6 +23,9 @@ input double MaxRisk = 0.02;
 input double StopLossPercent = 0.02;
 input double TakeProfitPercent = 0.04;
 input int MaxPositions = 3;
+input int MagicNumber = 123456;
+input int MaxSpread = 50;
+input string TradingHours = "00:00-23:59";
 input bool UseTrailingStop = true;
 input double TrailingDistance = 50;
 
@@ -70,7 +73,7 @@ int OnInit() {
     Print("GenXAI Advanced EA v2.0 - Initializing...");
     
     // Initialize trading
-    trade.SetExpertMagicNumber(123456);
+    trade.SetExpertMagicNumber(MagicNumber);
     trade.SetDeviationInPoints(10);
     trade.SetTypeFilling(ORDER_FILLING_FOK);
     
@@ -109,6 +112,16 @@ void OnTick() {
     
     // Check risk management
     if (!CheckRiskManagement()) {
+        return;
+    }
+
+    // Check spread
+    if (SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) > MaxSpread) {
+        return;
+    }
+
+    // Check trading hours
+    if (!IsTradingTime()) {
         return;
     }
     
@@ -368,7 +381,7 @@ int CountPositions(ENUM_POSITION_TYPE type = -1) {
     
     for (int i = 0; i < PositionsTotal(); i++) {
         if (PositionGetTicket(i) > 0) {
-            if (PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            if (PositionGetString(POSITION_SYMBOL) == _Symbol && PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
                 if (type == -1 || PositionGetInteger(POSITION_TYPE) == type) {
                     count++;
                 }
@@ -385,7 +398,7 @@ int CountPositions(ENUM_POSITION_TYPE type = -1) {
 void UpdateTrailingStops() {
     for (int i = 0; i < PositionsTotal(); i++) {
         if (PositionGetTicket(i) > 0) {
-            if (PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            if (PositionGetString(POSITION_SYMBOL) == _Symbol && PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
                 double current_sl = PositionGetDouble(POSITION_SL);
                 double current_price = PositionGetDouble(POSITION_PRICE_CURRENT);
                 double new_sl = current_sl;
@@ -437,11 +450,37 @@ void SendTradeNotification(string action, double volume, double price) {
 void CloseAllPositions() {
     for (int i = PositionsTotal() - 1; i >= 0; i--) {
         if (PositionGetTicket(i) > 0) {
-            if (PositionGetString(POSITION_SYMBOL) == _Symbol) {
+            if (PositionGetString(POSITION_SYMBOL) == _Symbol && PositionGetInteger(POSITION_MAGIC) == MagicNumber) {
                 trade.PositionClose(PositionGetTicket(i));
             }
         }
     }
+}
+
+//+------------------------------------------------------------------+
+//| Check trading hours                                              |
+//+------------------------------------------------------------------+
+bool IsTradingTime() {
+    datetime current_time = TimeCurrent();
+    MqlDateTime dt;
+    TimeToStruct(current_time, dt);
+
+    string current_time_str = StringFormat("%02d:%02d", dt.hour, dt.min);
+
+    // Parse TradingHours "HH:MM-HH:MM"
+    string parts[];
+    if (StringSplit(TradingHours, '-', parts) == 2) {
+        string start_time = parts[0];
+        string end_time = parts[1];
+
+        if (current_time_str >= start_time && current_time_str <= end_time) {
+            return true;
+        }
+    } else {
+        return true;
+    }
+
+    return false;
 }
 
 //+------------------------------------------------------------------+

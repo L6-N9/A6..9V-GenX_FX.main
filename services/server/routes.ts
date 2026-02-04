@@ -1,6 +1,6 @@
 import { Express } from 'express';
 import { db } from './db.js';
-import { users, tradingAccounts, positions, notifications, educationalResources } from '../../shared/schema.js';
+import { users, tradingAccounts, positions, notifications, educationalResources } from '@shared/schema';
 import { eq, desc, and, or, ilike, count } from 'drizzle-orm';
 
 /**
@@ -90,7 +90,7 @@ export function registerRoutes(app: Express) {
       const { page = '1', limit = '10', search = '', skillLevel, category } = req.query;
       const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
-      let whereConditions = [];
+      const whereConditions = [];
 
       if (search) {
         whereConditions.push(

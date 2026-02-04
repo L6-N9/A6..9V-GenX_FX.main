@@ -4,16 +4,17 @@ Focuses on generating reliable trading signals for MT4/5 Expert Advisors
 """
 
 import asyncio
-import logging
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, asdict
-from enum import Enum
 import json
+import logging
 import os
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from enum import Enum
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 from core.ai_models.ensemble_predictor import EnsemblePredictor
 from core.data_sources.fxcm_provider import FXCMDataProvider
@@ -24,6 +25,7 @@ from utils.technical_indicators import TechnicalIndicators
 
 logger = logging.getLogger(__name__)
 
+
 class SignalType(Enum):
     BUY = "BUY"
     SELL = "SELL"
@@ -31,11 +33,13 @@ class SignalType(Enum):
     CLOSE_BUY = "CLOSE_BUY"
     CLOSE_SELL = "CLOSE_SELL"
 
+
 class SignalStrength(Enum):
     WEAK = 1
     MODERATE = 2
     STRONG = 3
     VERY_STRONG = 4
+
 
 @dataclass
 class TradingSignal:
@@ -88,8 +92,7 @@ class TradingSignal:
             Dict[str, Any]: A dictionary with formatted signal data.
         """
         return {
-            "Magic": hash(f"{self.symbol}_{self.timestamp.isoformat()}")
-            % 2147483647,
+            "Magic": hash(f"{self.symbol}_{self.timestamp.isoformat()}") % 2147483647,
             "Symbol": self.symbol,
             "Signal": self.signal_type.value,
             "Strength": self.strength.value,
@@ -107,6 +110,7 @@ class TradingSignal:
             "TechnicalConfluence": self.technical_confluence,
             "FundamentalScore": round(self.fundamental_score, 4),
         }
+
 
 class TradingEngine:
     """
@@ -134,23 +138,37 @@ class TradingEngine:
             config_path (str): The path to the main trading configuration file.
         """
         self.config = self._load_config(config_path)
+
+        # Flatten 'trading' config if it exists
+        if "trading" in self.config:
+            for key, value in self.config["trading"].items():
+                if key not in self.config:
+                    self.config[key] = value
+
         self.is_running = False
         self.last_signals: Dict[str, datetime] = {}
-        
+
         # Initialize core components
-        self.data_provider = FXCMDataProvider(self.config['fxcm'])
-        self.ensemble_predictor = EnsemblePredictor(self.config['ai_models'])
-        self.position_sizer = PositionSizer(self.config['risk_management'])
-        self.signal_validator = MultiTimeframeValidator(self.config['validation'])
-        self.spreadsheet_manager = SpreadsheetManager(self.config['spreadsheet'])
+        self.data_provider = FXCMDataProvider(self.config["fxcm"])
+        self.ensemble_predictor = EnsemblePredictor(self.config["ai_models"])
+
+        rm_config = self.config.get("risk_management", {})
+        self.position_sizer = PositionSizer(
+            account_balance=self.config.get("account_balance", 100000),
+            max_risk_per_trade=rm_config.get("max_risk_per_trade", 0.02),
+            max_portfolio_risk=rm_config.get("max_total_risk", 0.06),
+        )
+
+        self.signal_validator = MultiTimeframeValidator(self.config["validation"])
+        self.spreadsheet_manager = SpreadsheetManager(self.config["spreadsheet"])
         self.technical_indicators = TechnicalIndicators()
-        
+
         # Performance tracking
         self.signal_history = []
         self.performance_metrics = {}
-        
+
         logger.info("Trading Engine initialized successfully")
-    
+
     def _load_config(self, config_path: str) -> Dict:
         """
         Loads the trading configuration from a JSON file.
@@ -167,12 +185,18 @@ class TradingEngine:
         except FileNotFoundError:
             logger.warning(f"Config file {config_path} not found, using defaults.")
             return self._get_default_config()
-    
+
     def _get_default_config(self) -> Dict:
         """Provides a default configuration if the config file is not found."""
         return {
             "symbols": [
-                "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD",
+                "EURUSD",
+                "GBPUSD",
+                "USDJPY",
+                "USDCHF",
+                "AUDUSD",
+                "USDCAD",
+                "NZDUSD",
             ],
             "timeframes": ["M15", "H1", "H4", "D1"],
             "primary_timeframe": "H1",
@@ -206,7 +230,7 @@ class TradingEngine:
                 "backup_enabled": True,
             },
         }
-    
+
     async def start(self):
         """
         Starts the trading engine and its components.
@@ -232,7 +256,7 @@ class TradingEngine:
         except Exception as e:
             logger.error(f"Fatal error during engine startup: {e}")
             await self.stop()
-    
+
     async def stop(self):
         """Stops the trading engine gracefully."""
         if not self.is_running:
@@ -246,7 +270,7 @@ class TradingEngine:
             logger.info("Trading Engine stopped successfully.")
         except Exception as e:
             logger.error(f"Error during trading engine shutdown: {e}")
-    
+
     async def _run_trading_loop(self):
         """The main trading loop that periodically generates and processes signals."""
         logger.info("Trading loop started.")
@@ -276,7 +300,7 @@ class TradingEngine:
             except Exception as e:
                 logger.error(f"Error in trading loop: {e}", exc_info=True)
                 await asyncio.sleep(60)  # Wait before retrying on error
-    
+
     async def _generate_signals(self) -> List[TradingSignal]:
         """
         Generates trading signals for all configured symbols.
@@ -285,15 +309,12 @@ class TradingEngine:
             List[TradingSignal]: A list of generated TradingSignal objects.
         """
         tasks = [
-            self._process_symbol_for_signal(symbol)
-            for symbol in self.config["symbols"]
+            self._process_symbol_for_signal(symbol) for symbol in self.config["symbols"]
         ]
         results = await asyncio.gather(*tasks)
         return [signal for signal in results if signal is not None]
 
-    async def _process_symbol_for_signal(
-        self, symbol: str
-    ) -> Optional[TradingSignal]:
+    async def _process_symbol_for_signal(self, symbol: str) -> Optional[TradingSignal]:
         """Processes a single symbol to generate a trading signal."""
         try:
             market_data = await self._get_multi_timeframe_data(symbol)
@@ -320,57 +341,104 @@ class TradingEngine:
         except Exception as e:
             logger.error(f"Error generating signal for {symbol}: {e}")
             return None
-    
+
     async def _get_multi_timeframe_data(self, symbol: str) -> Dict[str, pd.DataFrame]:
-        """Get market data for multiple timeframes"""
-        data = {}
-        
-        for timeframe in self.config['timeframes']:
+        """
+        Get market data for multiple timeframes concurrently.
+
+        Optimization: Fetches data for all configured timeframes in parallel
+        using asyncio.gather instead of sequentially. This significantly reduces
+        the data collection time for each symbol, making the signal generation
+        process faster, especially with more timeframes or higher latency.
+        """
+
+        async def fetch_and_process(timeframe: str):
+            """
+            Asynchronously fetches data and then runs the CPU-bound indicator
+            calculations in a separate thread to avoid blocking the event loop.
+            """
             try:
+                # 1. Asynchronously fetch I/O-bound data
                 df = await self.data_provider.get_historical_data(
                     symbol=symbol,
                     timeframe=timeframe,
-                    periods=self.config['ai_models']['lookback_periods']
+                    periods=self.config["ai_models"]["lookback_periods"],
                 )
-                
-                # Add technical indicators
-                df = self.technical_indicators.add_all_indicators(df)
-                data[timeframe] = df
-                
+
+                if df is None or df.empty:
+                    return timeframe, None
+
+                # 2. Run CPU-bound calculations in a thread pool
+                # This prevents blocking the asyncio event loop.
+                df_with_indicators = await asyncio.to_thread(
+                    self.technical_indicators.add_all_indicators, df
+                )
+                return timeframe, df_with_indicators
+
             except Exception as e:
                 logger.error(f"Error getting data for {symbol} {timeframe}: {e}")
-        
-        return data
-    
+                return timeframe, None
+
+        # Schedule all fetch/process tasks to run concurrently
+        tasks = [fetch_and_process(tf) for tf in self.config["timeframes"]]
+        results = await asyncio.gather(*tasks)
+
+        # Filter out any tasks that failed
+        return {tf: df for tf, df in results if df is not None and not df.empty}
+
     def _is_data_valid(self, market_data: Dict[str, pd.DataFrame]) -> bool:
         """Validate market data quality"""
         if not market_data:
             return False
-        
-        primary_data = market_data.get(self.config['primary_timeframe'])
+
+        primary_data = market_data.get(self.config["primary_timeframe"])
         if primary_data is None or len(primary_data) < 50:
             return False
-        
+
         # Check for recent data (within last hour)
         latest_timestamp = primary_data.index[-1]
         if datetime.now() - latest_timestamp > timedelta(hours=1):
             return False
-        
+
+        # ⚡ Bolt Addition: Ensure critical 'atr' column is present
+        # This check prevents runtime errors in `_calculate_levels` and
+        # ensures data integrity before processing.
+        if "atr" not in primary_data.columns:
+            logger.warning(
+                f"Data for {self.config['primary_timeframe']} is missing 'atr' column."
+            )
+            return False
+
         return True
-    
+
     def _analyze_market_condition(self, market_data: Dict[str, pd.DataFrame]) -> str:
-        """Analyze overall market condition"""
-        primary_data = market_data[self.config['primary_timeframe']]
-        
-        # Calculate volatility
-        volatility = primary_data['close'].rolling(20).std().iloc[-1]
-        avg_volatility = primary_data['close'].rolling(100).std().mean()
-        
-        # Calculate trend strength
-        sma_20 = primary_data['close'].rolling(20).mean().iloc[-1]
-        sma_50 = primary_data['close'].rolling(50).mean().iloc[-1]
-        current_price = primary_data['close'].iloc[-1]
-        
+        """
+        Analyze overall market condition using pre-calculated indicators.
+
+        ---
+        ⚡ Bolt Optimization:
+        - Replaced redundant calculations for volatility, SMA20, and SMA50.
+        - The function now uses the `volatility_20`, `volatility_100`, `sma_20`,
+          and `sma_50` columns that are already pre-calculated in the
+          technical indicators utility.
+        - Impact: Reduces CPU load by avoiding re-computation of several
+          rolling window functions on every signal analysis, making the
+          trading loop more efficient.
+        ---
+        """
+        primary_data = market_data[self.config["primary_timeframe"]]
+
+        # --- Use pre-calculated volatility ---
+        # The 'volatility_20' and 'volatility_100' indicators are already calculated.
+        volatility = primary_data["volatility_20"].iloc[-1]
+        avg_volatility = primary_data["volatility_100"].mean()
+
+        # --- Use pre-calculated trend strength ---
+        # The 'sma_20' and 'sma_50' indicators are already calculated.
+        sma_20 = primary_data["sma_20"].iloc[-1]
+        sma_50 = primary_data["sma_50"].iloc[-1]
+        current_price = primary_data["close"].iloc[-1]
+
         if volatility > avg_volatility * 1.5:
             return "HIGH_VOLATILITY"
         elif current_price > sma_20 > sma_50:
@@ -381,25 +449,27 @@ class TradingEngine:
             return "SIDEWAYS"
         else:
             return "MIXED"
-    
+
     async def _create_trading_signal(
         self,
         symbol: str,
         prediction: Dict,
         market_data: Dict[str, pd.DataFrame],
-        market_condition: str
+        market_condition: str,
     ) -> Optional[TradingSignal]:
         """Create a validated trading signal"""
-        
-        primary_data = market_data[self.config['primary_timeframe']]
-        current_price = primary_data['close'].iloc[-1]
-        
+
+        primary_data = market_data[self.config["primary_timeframe"]]
+        current_price = primary_data["close"].iloc[-1]
+
         # Determine signal type based on prediction
-        signal_type = self._get_signal_type(prediction['direction'], prediction['confidence'])
-        
+        signal_type = self._get_signal_type(
+            prediction["direction"], prediction["confidence"]
+        )
+
         if signal_type == SignalType.HOLD:
             return None
-        
+
         # Calculate entry, stop loss, and take profit
         entry_price = current_price
         stop_loss, take_profit = self._calculate_levels(
@@ -407,9 +477,9 @@ class TradingEngine:
             signal_type=signal_type,
             entry_price=entry_price,
             data=primary_data,
-            market_condition=market_condition
+            market_condition=market_condition,
         )
-        
+
         # Calculate risk-reward ratio
         if signal_type == SignalType.BUY:
             risk = entry_price - stop_loss
@@ -417,27 +487,32 @@ class TradingEngine:
         else:
             risk = stop_loss - entry_price
             reward = entry_price - take_profit
-        
+
         risk_reward_ratio = reward / risk if risk > 0 else 0
-        
+
         # Skip signals with poor risk-reward
         if risk_reward_ratio < 1.5:
             return None
-        
+
         # Calculate position size
-        position_size_pct = self.position_sizer.calculate_position_size(
-            account_balance=100000,  # This should come from broker
-            risk_amount=entry_price - stop_loss if signal_type == SignalType.BUY else stop_loss - entry_price,
+        position_info = self.position_sizer.calculate_position_size(
+            symbol=symbol,
             entry_price=entry_price,
-            max_risk_pct=self.config['risk_management']['max_risk_per_trade']
+            stop_loss=stop_loss,
+            confidence=prediction["confidence"],
         )
-        
+        position_size_pct = position_info.position_size
+
         # Determine signal strength
-        strength = self._calculate_signal_strength(prediction['confidence'], risk_reward_ratio)
-        
+        strength = self._calculate_signal_strength(
+            prediction["confidence"], risk_reward_ratio
+        )
+
         # Calculate technical confluence
-        technical_confluence = self._calculate_technical_confluence(primary_data, signal_type)
-        
+        technical_confluence = self._calculate_technical_confluence(
+            primary_data, signal_type
+        )
+
         return TradingSignal(
             timestamp=datetime.now(),
             symbol=symbol,
@@ -446,43 +521,50 @@ class TradingEngine:
             entry_price=entry_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            confidence=prediction['confidence'],
+            confidence=prediction["confidence"],
             risk_reward_ratio=risk_reward_ratio,
-            timeframe=self.config['primary_timeframe'],
-            model_predictions=prediction.get('model_scores', {}),
+            timeframe=self.config["primary_timeframe"],
+            model_predictions=prediction.get("model_scores", {}),
             technical_confluence=technical_confluence,
-            fundamental_score=prediction.get('fundamental_score', 0.5),
+            fundamental_score=prediction.get("fundamental_score", 0.5),
             market_condition=market_condition,
             position_size_pct=position_size_pct,
-            max_risk_pct=self.config['risk_management']['max_risk_per_trade'],
-            expiry_time=datetime.now() + timedelta(hours=4)  # 4-hour expiry
+            max_risk_pct=self.config["risk_management"]["max_risk_per_trade"],
+            expiry_time=datetime.now() + timedelta(hours=4),  # 4-hour expiry
         )
-    
+
     def _get_signal_type(self, direction: float, confidence: float) -> SignalType:
         """Determine signal type from prediction"""
-        if confidence < self.config['min_confidence_threshold']:
+        if confidence < self.config["min_confidence_threshold"]:
             return SignalType.HOLD
-        
+
         if direction > 0.6:
             return SignalType.BUY
         elif direction < -0.6:
             return SignalType.SELL
         else:
             return SignalType.HOLD
-    
+
     def _calculate_levels(
         self,
         symbol: str,
         signal_type: SignalType,
         entry_price: float,
         data: pd.DataFrame,
-        market_condition: str
+        market_condition: str,
     ) -> Tuple[float, float]:
         """Calculate stop loss and take profit levels"""
-        
-        # Calculate ATR for dynamic levels
-        atr = data['atr'].iloc[-1] if 'atr' in data.columns else (data['high'] - data['low']).rolling(14).mean().iloc[-1]
-        
+
+        # ---
+        # ⚡ Bolt Optimization:
+        # - Removed the fallback ATR calculation. The 'atr' column is now
+        #   guaranteed to exist by the `_is_data_valid` check.
+        # - Impact: Prevents a redundant, CPU-intensive rolling window
+        #   calculation in the hot path of signal generation, improving
+        #   efficiency.
+        # ---
+        atr = data["atr"].iloc[-1]
+
         # Adjust multipliers based on market condition
         if market_condition == "HIGH_VOLATILITY":
             sl_multiplier, tp_multiplier = 2.5, 4.0
@@ -490,20 +572,22 @@ class TradingEngine:
             sl_multiplier, tp_multiplier = 2.0, 3.5
         else:
             sl_multiplier, tp_multiplier = 1.5, 3.0
-        
+
         if signal_type == SignalType.BUY:
             stop_loss = entry_price - (atr * sl_multiplier)
             take_profit = entry_price + (atr * tp_multiplier)
         else:  # SELL
             stop_loss = entry_price + (atr * sl_multiplier)
             take_profit = entry_price - (atr * tp_multiplier)
-        
+
         return round(stop_loss, 5), round(take_profit, 5)
-    
-    def _calculate_signal_strength(self, confidence: float, risk_reward: float) -> SignalStrength:
+
+    def _calculate_signal_strength(
+        self, confidence: float, risk_reward: float
+    ) -> SignalStrength:
         """Calculate signal strength based on confidence and risk-reward"""
         strength_score = (confidence * 0.7) + (min(risk_reward / 3.0, 1.0) * 0.3)
-        
+
         if strength_score >= 0.9:
             return SignalStrength.VERY_STRONG
         elif strength_score >= 0.8:
@@ -512,131 +596,138 @@ class TradingEngine:
             return SignalStrength.MODERATE
         else:
             return SignalStrength.WEAK
-    
-    def _calculate_technical_confluence(self, data: pd.DataFrame, signal_type: SignalType) -> int:
+
+    def _calculate_technical_confluence(
+        self, data: pd.DataFrame, signal_type: SignalType
+    ) -> int:
         """Calculate how many technical indicators agree with the signal"""
         confluence = 0
-        current_price = data['close'].iloc[-1]
-        
+        current_price = data["close"].iloc[-1]
+
         # Moving averages
-        if 'sma_20' in data.columns and 'sma_50' in data.columns:
-            sma_20 = data['sma_20'].iloc[-1]
-            sma_50 = data['sma_50'].iloc[-1]
-            
+        if "sma_20" in data.columns and "sma_50" in data.columns:
+            sma_20 = data["sma_20"].iloc[-1]
+            sma_50 = data["sma_50"].iloc[-1]
+
             if signal_type == SignalType.BUY and current_price > sma_20 > sma_50:
                 confluence += 1
             elif signal_type == SignalType.SELL and current_price < sma_20 < sma_50:
                 confluence += 1
-        
+
         # RSI
-        if 'rsi' in data.columns:
-            rsi = data['rsi'].iloc[-1]
+        if "rsi" in data.columns:
+            rsi = data["rsi"].iloc[-1]
             if signal_type == SignalType.BUY and rsi < 70:
                 confluence += 1
             elif signal_type == SignalType.SELL and rsi > 30:
                 confluence += 1
-        
+
         # MACD
-        if 'macd' in data.columns and 'macd_signal' in data.columns:
-            macd = data['macd'].iloc[-1]
-            macd_signal = data['macd_signal'].iloc[-1]
-            
+        if "macd" in data.columns and "macd_signal" in data.columns:
+            macd = data["macd"].iloc[-1]
+            macd_signal = data["macd_signal"].iloc[-1]
+
             if signal_type == SignalType.BUY and macd > macd_signal:
                 confluence += 1
             elif signal_type == SignalType.SELL and macd < macd_signal:
                 confluence += 1
-        
+
         return confluence
-    
-    async def _validate_signals(self, signals: List[TradingSignal]) -> List[TradingSignal]:
+
+    async def _validate_signals(
+        self, signals: List[TradingSignal]
+    ) -> List[TradingSignal]:
         """Validate signals using multi-timeframe analysis"""
         validated_signals = []
-        
+
         for signal in signals:
             try:
                 # Check if we already have a recent signal for this symbol
                 if self._has_recent_signal(signal.symbol):
                     continue
-                
+
                 # Multi-timeframe validation
                 if await self.signal_validator.validate(signal):
                     validated_signals.append(signal)
                     self.last_signals[signal.symbol] = signal.timestamp
-                    
+
             except Exception as e:
                 logger.error(f"Error validating signal for {signal.symbol}: {e}")
-        
+
         # Limit concurrent signals
-        max_signals = self.config['max_concurrent_signals']
+        max_signals = self.config["max_concurrent_signals"]
         if len(validated_signals) > max_signals:
             # Sort by strength and confidence, take the best ones
             validated_signals.sort(
-                key=lambda x: (x.strength.value, x.confidence),
-                reverse=True
+                key=lambda x: (x.strength.value, x.confidence), reverse=True
             )
             validated_signals = validated_signals[:max_signals]
-        
+
         return validated_signals
-    
+
     def _has_recent_signal(self, symbol: str, hours: int = 2) -> bool:
         """Check if we have a recent signal for this symbol"""
         if symbol not in self.last_signals:
             return False
-        
+
         time_diff = datetime.now() - self.last_signals[symbol]
         return time_diff < timedelta(hours=hours)
-    
+
     async def _update_performance_metrics(self):
         """Update performance tracking metrics"""
         # This would analyze signal performance, accuracy, etc.
         # Implementation depends on how you want to track performance
         pass
-    
-    async def force_signal_generation(self, symbols: List[str] = None) -> List[TradingSignal]:
+
+    async def force_signal_generation(
+        self, symbols: List[str] = None
+    ) -> List[TradingSignal]:
         """Force signal generation for testing purposes"""
         if symbols is None:
-            symbols = self.config['symbols']
-        
+            symbols = self.config["symbols"]
+
         logger.info(f"Force generating signals for: {symbols}")
-        
+
         signals = []
         for symbol in symbols:
             try:
                 market_data = await self._get_multi_timeframe_data(symbol)
                 if not self._is_data_valid(market_data):
                     continue
-                
+
                 prediction = await self.ensemble_predictor.predict(
                     symbol=symbol,
-                    data=market_data[self.config['primary_timeframe']],
-                    multi_timeframe_data=market_data
+                    data=market_data[self.config["primary_timeframe"]],
+                    multi_timeframe_data=market_data,
                 )
-                
+
                 market_condition = self._analyze_market_condition(market_data)
-                
+
                 signal = await self._create_trading_signal(
                     symbol=symbol,
                     prediction=prediction,
                     market_data=market_data,
-                    market_condition=market_condition
+                    market_condition=market_condition,
                 )
-                
+
                 if signal:
                     signals.append(signal)
-                    
+
             except Exception as e:
                 logger.error(f"Error force generating signal for {symbol}: {e}")
-        
+
         return signals
-    
+
     def get_performance_report(self) -> Dict[str, Any]:
         """Get comprehensive performance report"""
         return {
-            'total_signals_generated': len(self.signal_history),
-            'signals_by_symbol': {},
-            'average_confidence': 0.0,
-            'win_rate': 0.0,
-            'average_risk_reward': 0.0,
-            'uptime': datetime.now() - getattr(self, 'start_time', datetime.now()),
-            'last_signal_time': max(self.last_signals.values()) if self.last_signals else None
+            "total_signals_generated": len(self.signal_history),
+            "signals_by_symbol": {},
+            "average_confidence": 0.0,
+            "win_rate": 0.0,
+            "average_risk_reward": 0.0,
+            "uptime": datetime.now() - getattr(self, "start_time", datetime.now()),
+            "last_signal_time": (
+                max(self.last_signals.values()) if self.last_signals else None
+            ),
         }

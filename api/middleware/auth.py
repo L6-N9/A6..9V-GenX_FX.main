@@ -1,24 +1,29 @@
-from fastapi import Request, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 try:
     from jose import JWTError, jwt
 except Exception:
     JWTError = Exception
+
     class _DummyJWT:
         def decode(self, *args, **kwargs):
             return {}
+
         def encode(self, *args, **kwargs):
             return ""
+
     jwt = _DummyJWT()
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
-import logging
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 
 security = HTTPBearer()
+
 
 class AuthMiddleware:
     """
@@ -136,5 +141,6 @@ class AuthMiddleware:
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
 
 auth_middleware = AuthMiddleware()

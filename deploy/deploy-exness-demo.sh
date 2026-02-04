@@ -418,6 +418,42 @@ setup_database() {
     log_info "Database tables created"
 }
 
+# Redeploy system
+redeploy() {
+    log_step "Redeploying GenX FX Platform..."
+
+    if [ ! -d "$APP_DIR" ]; then
+        log_error "Application directory $APP_DIR not found. Perform full install first."
+        exit 1
+    fi
+
+    cd $APP_DIR
+
+    log_info "Pulling latest changes from repository..."
+    # Ensure we are in a git repo
+    if [ -d ".git" ]; then
+        git fetch --all
+        git reset --hard origin/$(git rev-parse --abbrev-ref HEAD)
+    else
+        log_warn "Not a git repository at $APP_DIR. Skipping git pull."
+    fi
+
+    log_info "Updating dependencies..."
+    if [ -d "genx_env" ]; then
+        source genx_env/bin/activate
+        pip install -r requirements.txt
+    else
+        log_warn "Python environment not found. Skipping pip install."
+    fi
+
+    log_info "Restarting services..."
+    systemctl daemon-reload
+    systemctl restart genx-trading 2>/dev/null || log_warn "genx-trading service not found or failed to restart"
+    systemctl restart genx-monitor 2>/dev/null || log_warn "genx-monitor service not found or failed to restart"
+
+    log_info "Redeployment completed successfully"
+}
+
 # Display final information
 display_final_info() {
     echo -e "${GREEN}========================================${NC}"
@@ -427,7 +463,7 @@ display_final_info() {
     echo -e "${BLUE}Demo Account Details:${NC}"
     echo -e "Login: 279023502"
     echo -e "Server: Exness-MT5Trial8"
-    echo -e "Password: Leng12345@#$01"
+    echo -e "Password: <set via MT5_PASSWORD env var>"
     echo -e "Symbol: XAUUSD"
     echo -e "Timeframe: M15"
     echo ""
@@ -494,4 +530,9 @@ main() {
 }
 
 # Run main function
-main "$@" 
+if [[ "${1:-}" == "redeploy" ]]; then
+    check_root
+    redeploy
+else
+    main "$@"
+fi

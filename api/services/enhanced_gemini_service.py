@@ -6,10 +6,12 @@ Provides contextual intelligence for trading decisions and market understanding.
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
 import google.generativeai as genai
+
 from ..config.settings import get_settings
 
 settings = get_settings()
@@ -122,7 +124,7 @@ class EnhancedGeminiService:
         )  # Use the more advanced model
         self.conversation_history = []
         self.market_context = {}
-        
+
     async def analyze_market_sentiment(
         self,
         news_articles: List[str],
@@ -157,7 +159,7 @@ class EnhancedGeminiService:
         except Exception as e:
             logger.error(f"Error in market sentiment analysis: {e}")
             return self._get_default_sentiment()
-    
+
     def _build_sentiment_prompt(
         self,
         news_articles: List[str],
@@ -177,7 +179,7 @@ class EnhancedGeminiService:
         """
         news_text = "\n\n".join(news_articles[:10])  # Limit to avoid token limits
         social_text = "\n\n".join(social_media_posts[:20])
-        
+
         return f"""
         As an expert financial market analyst, analyze the sentiment around {instrument} and the broader forex market based on the following information:
 
@@ -213,7 +215,7 @@ class EnhancedGeminiService:
 
         Provide only the JSON response without additional commentary.
         """
-    
+
     async def validate_trading_signal(
         self,
         signal_data: Dict[str, Any],
@@ -247,7 +249,7 @@ class EnhancedGeminiService:
         except Exception as e:
             logger.error(f"Error in signal validation: {e}")
             return self._get_default_validation()
-    
+
     def _build_signal_validation_prompt(
         self,
         signal_data: Dict[str, Any],
@@ -268,7 +270,7 @@ class EnhancedGeminiService:
             str: The formatted prompt string.
         """
         news_summary = "\n".join(recent_news[:5])
-        
+
         return f"""
         As an expert quantitative analyst and risk manager, evaluate this trading signal:
 
@@ -320,7 +322,7 @@ class EnhancedGeminiService:
 
         Provide only the JSON response.
         """
-    
+
     async def analyze_market_regime(
         self,
         market_data: Dict[str, Any],
@@ -352,7 +354,7 @@ class EnhancedGeminiService:
         except Exception as e:
             logger.error(f"Error in market regime analysis: {e}")
             return self._get_default_regime()
-    
+
     async def generate_adaptive_strategy_suggestions(
         self,
         current_performance: Dict[str, Any],
@@ -435,7 +437,7 @@ class EnhancedGeminiService:
                 "overall_recommendation": "maintain_current",
                 "reasoning": "Analysis unavailable",
             }
-    
+
     async def analyze_economic_event_impact(
         self,
         event_details: Dict[str, Any],
@@ -519,7 +521,7 @@ class EnhancedGeminiService:
                 "expected_volatility_increase": 1.0,
                 "reasoning": "Analysis unavailable",
             }
-    
+
     def _parse_sentiment_response(self, response_text: str) -> Dict[str, Any]:
         """
         Parses a JSON object from the model's text response for sentiment analysis.
@@ -533,7 +535,7 @@ class EnhancedGeminiService:
         return self._parse_json_response(
             response_text, self._get_default_sentiment_data
         )
-    
+
     def _parse_validation_response(self, response_text: str) -> Dict[str, Any]:
         """
         Parses a JSON object from the model's text response for signal validation.
@@ -547,7 +549,7 @@ class EnhancedGeminiService:
         return self._parse_json_response(
             response_text, self._get_default_validation_data
         )
-    
+
     def _parse_regime_response(self, response_text: str) -> Dict[str, Any]:
         """
         Parses a JSON object from the model's text response for market regime analysis.
@@ -558,10 +560,8 @@ class EnhancedGeminiService:
         Returns:
             Dict[str, Any]: The parsed JSON object as a dictionary.
         """
-        return self._parse_json_response(
-            response_text, self._get_default_regime_data
-        )
-    
+        return self._parse_json_response(response_text, self._get_default_regime_data)
+
     def _parse_json_response(
         self, response_text: str, default_factory: Callable = dict
     ) -> Dict[str, Any]:
@@ -593,7 +593,7 @@ class EnhancedGeminiService:
         except (json.JSONDecodeError, ValueError, IndexError) as e:
             logger.error(f"Error parsing JSON response: {e}\nResponse: {response_text}")
             return default_factory()
-    
+
     def _get_default_sentiment(self) -> SentimentAnalysis:
         """
         Returns a default, neutral sentiment analysis object.
@@ -602,7 +602,7 @@ class EnhancedGeminiService:
             SentimentAnalysis: A default sentiment analysis instance.
         """
         return SentimentAnalysis(**self._get_default_sentiment_data())
-    
+
     def _get_default_sentiment_data(self) -> Dict[str, Any]:
         """
         Returns a dictionary with default sentiment data.
@@ -621,7 +621,7 @@ class EnhancedGeminiService:
             "temporal_context": "short-term",
             "source_reliability": 0.5,
         }
-    
+
     def _get_default_validation(self) -> SignalValidation:
         """
         Returns a default, permissive signal validation object.
@@ -630,7 +630,7 @@ class EnhancedGeminiService:
             SignalValidation: A default signal validation instance.
         """
         return SignalValidation(**self._get_default_validation_data())
-    
+
     def _get_default_validation_data(self) -> Dict[str, Any]:
         """
         Returns a dictionary with default signal validation data.
@@ -648,7 +648,7 @@ class EnhancedGeminiService:
             "warning_factors": [],
             "recommended_position_size": 0.5,
         }
-    
+
     def _get_default_regime(self) -> MarketRegimeAnalysis:
         """
         Returns a default, neutral market regime analysis object.
@@ -657,7 +657,7 @@ class EnhancedGeminiService:
             MarketRegimeAnalysis: A default market regime instance.
         """
         return MarketRegimeAnalysis(**self._get_default_regime_data())
-    
+
     def _get_default_regime_data(self) -> Dict[str, Any]:
         """
         Returns a dictionary with default market regime data.
@@ -674,7 +674,7 @@ class EnhancedGeminiService:
             "retail_sentiment": "neutral",
             "news_flow_intensity": "normal",
         }
-    
+
     def _build_regime_analysis_prompt(
         self,
         market_data: Dict[str, Any],
@@ -698,7 +698,7 @@ class EnhancedGeminiService:
                 for event in economic_calendar[:5]
             ]
         )
-        
+
         return f"""
         As an expert macro analyst, analyze the current market regime based on this comprehensive data:
 

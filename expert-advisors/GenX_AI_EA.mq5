@@ -21,6 +21,8 @@ input double   Max_Lot_Size = 1.0;                  // Maximum lot size
 input int      Max_Open_Positions = 10;             // Maximum open positions
 input double   Max_Risk_Per_Trade = 0.02;           // Maximum risk per trade (2%)
 input bool     Enable_Auto_Trading = true;          // Enable automatic trading
+input int      MaxSpread = 50;                     // Max spread in points
+input string   TradingHours = "00:00-23:59";       // Trading hours (server time)
 input int      Heartbeat_Interval = 30;             // Heartbeat interval in seconds
 input bool     Log_Debug_Info = true;               // Enable debug logging
 
@@ -406,6 +408,18 @@ bool ValidateSignal(TradingSignal &signal) {
         Print("Auto trading is disabled");
         return false;
     }
+
+    // Check spread
+    if (SymbolInfoInteger(Symbol(), SYMBOL_SPREAD) > MaxSpread) {
+        Print("Spread too high: ", SymbolInfoInteger(Symbol(), SYMBOL_SPREAD));
+        return false;
+    }
+
+    // Check trading hours
+    if (!IsTradingTime()) {
+        Print("Outside trading hours");
+        return false;
+    }
     
     // Check symbol
     if (signal.instrument != Symbol()) {
@@ -437,6 +451,32 @@ bool ValidateSignal(TradingSignal &signal) {
     }
     
     return true;
+}
+
+//+------------------------------------------------------------------+
+//| Check trading hours                                              |
+//+------------------------------------------------------------------+
+bool IsTradingTime() {
+    datetime current_time = TimeCurrent();
+    MqlDateTime dt;
+    TimeToStruct(current_time, dt);
+
+    string current_time_str = StringFormat("%02d:%02d", dt.hour, dt.min);
+
+    // Parse TradingHours "HH:MM-HH:MM"
+    string parts[];
+    if (StringSplit(TradingHours, '-', parts) == 2) {
+        string start_time = parts[0];
+        string end_time = parts[1];
+
+        if (current_time_str >= start_time && current_time_str <= end_time) {
+            return true;
+        }
+    } else {
+        return true;
+    }
+
+    return false;
 }
 
 //+------------------------------------------------------------------+
