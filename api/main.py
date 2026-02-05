@@ -5,7 +5,7 @@ import os
 import re
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -15,6 +15,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from api.utils.cache import async_cache
 
 # Check if ai_models module exists and can be imported
 try:
@@ -43,32 +44,28 @@ scalping_service = None
 MONITORING_DASHBOARD_CACHE = None
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global predictor, MONITORING_DASHBOARD_CACHE, scalping_service
-
-    # --- Redis Setup ---
-    await api.redis.init_redis()
-
-    # --- AI Predictor Setup ---
+async def _init_ai_predictor():
+    global predictor
     if has_ai_models:
         try:
-            predictor = EnsemblePredictor()
+            # EnsemblePredictor can be slow to initialize due to model loading
+            predictor = await asyncio.to_thread(EnsemblePredictor)
             logging.info("EnsemblePredictor initialized.")
         except Exception as e:
             logging.error(f"Failed to initialize EnsemblePredictor: {e}")
             predictor = None
 
-    # --- Scalping Service Setup ---
+async def _init_scalping_service():
+    global scalping_service
     if has_scalping_service:
         try:
-            scalping_service = ScalpingService()
+            scalping_service = await asyncio.to_thread(ScalpingService)
             logging.info("ScalpingService initialized.")
         except Exception as e:
             logging.error(f"Failed to initialize ScalpingService: {e}")
             scalping_service = None
 
-    # --- Database Setup (Billing) ---
+async def _setup_database():
     try:
         conn = sqlite3.connect("genxdb_fx.db")
         cursor = conn.cursor()
@@ -116,22 +113,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logging.error(f"Failed to setup database: {e}")
 
-    # --- Dashboard Cache Setup ---
+async def _cache_dashboard():
+    global MONITORING_DASHBOARD_CACHE
     try:
-        with open("monitoring_dashboard.html", "r") as f:
-            MONITORING_DASHBOARD_CACHE = f.read()
+        # Offload file I/O to a thread
+        def read_file():
+            with open("monitoring_dashboard.html", "r") as f:
+                return f.read()
+
+        MONITORING_DASHBOARD_CACHE = await asyncio.to_thread(read_file)
         logging.info("Successfully cached monitoring_dashboard.html.")
     except FileNotFoundError:
-        logging.error(
-            "monitoring_dashboard.html not found. "
-            "The /monitor endpoint will be disabled."
-        )
+        logging.error("monitoring_dashboard.html not found.")
         MONITORING_DASHBOARD_CACHE = "<h1>Error: Monitoring dashboard not found.</h1>"
     except Exception as e:
         logging.error(f"An error occurred while caching the dashboard: {e}")
-        MONITORING_DASHBOARD_CACHE = (
-            "<h1>Error: Could not load monitoring dashboard.</h1>"
-        )
+        MONITORING_DASHBOARD_CACHE = "<h1>Error: Could not load monitoring dashboard.</h1>"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # --- Performance Optimization: Concurrent Startup ---
+    # By using asyncio.gather, we initialize all services in parallel,
+    # significantly reducing the application startup time.
+    startup_tasks = [
+        api.redis.init_redis(),
+        _init_ai_predictor(),
+        _init_scalping_service(),
+        _setup_database(),
+        _cache_dashboard()
+    ]
+    await asyncio.gather(*startup_tasks)
 
     yield
 
@@ -300,30 +311,13 @@ async def root():
     Provides basic information about the API, including its name, version,
     status, and repository URL.
 
+    This endpoint returns a module-level constant directly, which is the most
+    performant way to serve static information. Previous manual Redis caching
+    was removed as it introduced unnecessary I/O overhead for a constant.
+
     Returns:
         dict: A dictionary containing API information.
     """
-    # --- Performance: Use Redis cache if available ---
-    # This endpoint returns a static JSON response. Caching it reduces
-    # processing time for frequent requests, such as from health checkers.
-    redis_client = api.redis.redis_client
-
-    if redis_client:
-        try:
-            cached_root = await redis_client.get("root_cache")
-            if cached_root:
-                return json.loads(cached_root)
-        except Exception as e:
-            logging.error(f"Redis connection error: {e}. Performing live query.")
-
-    # --- Update Redis cache if available ---
-    if redis_client:
-        try:
-            # Cache for 1 minute (60 seconds)
-            await redis_client.setex("root_cache", 60, json.dumps(ROOT_RESPONSE))
-        except Exception as e:
-            logging.error(f"Could not write to Redis cache: {e}.")
-
     return ROOT_RESPONSE
 
 
@@ -526,53 +520,24 @@ async def get_scalping_signals(request: Request):
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
-@app.get("/trading-pairs")
-async def get_trading_pairs(
-    symbol: str | None = Query(default=None), db: sqlite3.Connection = Depends(get_db)
-):
+@async_cache(ttl=timedelta(hours=1))
+async def _get_all_trading_pairs_cached():
     """
-    Retrieves a list of active trading pairs from the database.
-
-    This endpoint is optimized with a Redis cache to reduce database load, as
-    the list of trading pairs does not change frequently. The cache expires
-    every hour.
-
-    If a symbol filter is provided, it performs a direct database query.
-
-    Returns:
-        dict: A dictionary containing a list of trading pairs or an error
-              message.
+    Helper function to fetch all trading pairs from the database and cache them.
+    This bypasses the need for manual Redis logic and provides ultra-fast
+    in-memory access.
     """
-    # --- Performance: Use Redis cache if available and no filter ---
-    redis_client = api.redis.redis_client
-
-    if redis_client and not symbol:
-        try:
-            cached_pairs = await redis_client.get("trading_pairs_cache")
-            if cached_pairs:
-                return json.loads(cached_pairs)
-        except Exception as e:
-            logging.error(f"Redis connection error: {e}. Performing live query.")
-
+    # We open a temporary connection here because this is only called on cache miss
+    conn = sqlite3.connect("genxdb_fx.db")
+    conn.row_factory = sqlite3.Row
     try:
-        # --- Use the DB connection from the dependency ---
-        cursor = db.cursor()
-
-        if symbol:
-            cursor.execute(
-                "SELECT symbol, base_currency, quote_currency "
-                "FROM trading_pairs WHERE is_active = 1 AND symbol = ?",
-                (symbol,),
-            )
-        else:
-            cursor.execute(
-                "SELECT symbol, base_currency, quote_currency "
-                "FROM trading_pairs WHERE is_active = 1"
-            )
-
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT symbol, base_currency, quote_currency "
+            "FROM trading_pairs WHERE is_active = 1"
+        )
         pairs = cursor.fetchall()
-
-        response = {
+        return {
             "trading_pairs": [
                 {
                     "symbol": pair["symbol"],
@@ -582,19 +547,47 @@ async def get_trading_pairs(
                 for pair in pairs
             ]
         }
+    finally:
+        conn.close()
 
-        # --- Update Redis cache if available and no filter ---
-        if redis_client and not symbol:
-            try:
-                # Cache for 1 hour (3600 seconds)
-                await redis_client.setex(
-                    "trading_pairs_cache", 3600, json.dumps(response)
-                )
-            except Exception as e:
-                logging.error(f"Could not write to Redis cache: {e}.")
+@app.get("/trading-pairs")
+async def get_trading_pairs(
+    symbol: str | None = Query(default=None), db: sqlite3.Connection = Depends(get_db)
+):
+    """
+    Retrieves a list of active trading pairs from the database.
 
-        return response
+    This endpoint is optimized with a two-layer approach:
+    1. For all pairs, it uses a high-performance in-memory @async_cache.
+    2. For single symbol queries, it performs a direct, optimized DB lookup.
+
+    Returns:
+        dict: A dictionary containing a list of trading pairs.
+    """
+    if not symbol:
+        return await _get_all_trading_pairs_cached()
+
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT symbol, base_currency, quote_currency "
+            "FROM trading_pairs WHERE is_active = 1 AND symbol = ?",
+            (symbol,),
+        )
+        pairs = cursor.fetchall()
+
+        return {
+            "trading_pairs": [
+                {
+                    "symbol": pair["symbol"],
+                    "base_currency": pair["base_currency"],
+                    "quote_currency": pair["quote_currency"],
+                }
+                for pair in pairs
+            ]
+        }
     except Exception as e:
+        logging.error(f"Error fetching trading pair {symbol}: {e}")
         return {"error": str(e)}
 
 
@@ -672,42 +665,27 @@ async def get_users(
 
 
 @app.get("/mt5-info")
+@async_cache(ttl=timedelta(hours=1))
 async def get_mt5_info():
     """
     Provides information about the MT5 connection.
     Updated for account 411534497 on Exness-MT5Real8.
 
+    This endpoint is optimized with the @async_cache decorator, which provides
+    ultra-fast in-memory caching and prevents "thundering herd" issues.
+    This replaces the previous manual Redis caching logic for cleaner and
+    more performant code.
+
     Returns:
         dict: A dictionary with MT5 login and server details.
     """
-    # --- Performance: Use Redis cache for static data ---
-    redis_client = api.redis.redis_client
-
-    if redis_client:
-        try:
-            cached_info = await redis_client.get("mt5_info_cache_v2")
-            if cached_info:
-                return json.loads(cached_info)
-        except Exception as e:
-            logging.error(f"Redis connection error: {e}. Serving live data.")
-
-    response = {
+    return {
         "login": "411534497",
         "server": "Exness-MT5Real8",
         "status": "configured",
         "account_type": "real",
         "broker": "Exness",
     }
-
-    # --- Update Redis cache if available ---
-    if redis_client:
-        try:
-            # Cache for 1 hour (3600 seconds)
-            await redis_client.setex("mt5_info_cache_v2", 3600, json.dumps(response))
-        except Exception as e:
-            logging.error(f"Could not write to Redis cache: {e}.")
-
-    return response
 
 
 @app.get("/api/v1/monitor")
