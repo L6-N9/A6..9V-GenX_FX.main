@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import aiohttp
+from ..utils.cache import async_cache
 import finnhub
 from alpha_vantage.fundamentaldata import FundamentalData
 from newsapi import NewsApiClient
@@ -269,6 +270,7 @@ class NewsService:
 
         return sorted_news[:limit]
 
+    @async_cache(ttl=timedelta(minutes=15))
     async def get_market_sentiment_news(self) -> Dict[str, Any]:
         """
         Gathers a broad range of news for general market sentiment analysis.

@@ -9,6 +9,8 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from ..utils.cache import async_cache
+
 import praw
 
 logger = logging.getLogger(__name__)
@@ -176,6 +178,7 @@ class RedditService:
             logger.error(f"Error fetching posts from r/{subreddit_name}: {e}")
             return []
 
+    @async_cache(ttl=timedelta(minutes=15))
     async def get_crypto_sentiment(self) -> Dict[str, Any]:
         """
         Aggregates and analyzes sentiment for cryptocurrency-related subreddits.
@@ -224,6 +227,7 @@ class RedditService:
                 "timestamp": datetime.now(),
             }
 
+    @async_cache(ttl=timedelta(minutes=15))
     async def get_stock_sentiment(self) -> Dict[str, Any]:
         """
         Aggregates and analyzes sentiment for stock market-related subreddits.
@@ -268,6 +272,7 @@ class RedditService:
                 "timestamp": datetime.now(),
             }
 
+    @async_cache(ttl=timedelta(minutes=15))
     async def get_wallstreetbets_sentiment(self) -> Dict[str, Any]:
         """
         Performs a specific analysis of the r/wallstreetbets subreddit.
