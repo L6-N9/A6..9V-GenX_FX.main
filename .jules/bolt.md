@@ -27,3 +27,9 @@
 **Learning:** I identified a massive performance bottleneck in `ai_models/feature_engineer.py` where Python loops were used to generate sliding windows for LSTMs and CNNs. Generating chart images was particularly slow (~1.7s for 2000 rows) due to repeated `.iloc` slicing and redundant normalization in every window. Additionally, the inference path redundantly calculated the entire history even though only the last window was needed.
 
 **Action:** I replaced the Python loops with `numpy.lib.stride_tricks.sliding_window_view` for fully vectorized window generation, yielding a ~270x speedup for chart images. I also introduced an `only_last` flag to optimize the inference path, providing a ~60x speedup for real-time predictions. Using `np.stack` and `np.column_stack` on the vectorized windows ensures the multi-channel structure is maintained without explicit iteration.
+
+## 2025-02-06 - Consolidating Threaded I/O and Regex Pre-compilation
+
+**Learning:** I identified a performance bottleneck in `api/services/reddit_service.py` where multiple `run_in_executor` calls were used for a single logical I/O operation (fetching subreddit posts), causing unnecessary task scheduling and thread context-switching overhead. Additionally, repeated regex compilation and set creation in hot paths (`_extract_tickers` and `_filter_posts_by_keywords`) added significant micro-overhead to every request.
+
+**Action:** I consolidated multiple PRAW I/O calls into a single synchronous helper called via one `run_in_executor` task. I also moved static sets to class constants and pre-compiled all regex patterns in `__init__`. Finally, I replaced iterative substring searches with a single-pass regex search for keyword filtering, resulting in measurably faster social sentiment analysis.

@@ -30,6 +30,16 @@ class RedditService:
         trading_subreddits (List[str]): A list of subreddits to monitor.
     """
 
+    # Common words to exclude from ticker extraction to reduce false positives
+    # Moved to a class constant to avoid re-creating the set on every call.
+    EXCLUDE_WORDS = {
+        "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER",
+        "WAS", "ONE", "OUR", "HAD", "HAS", "HAVE", "HIS", "HOW", "ITS", "MAY",
+        "NEW", "NOW", "OLD", "SEE", "TWO", "WAY", "WHO", "BOY", "DID", "GET",
+        "HIM", "OWN", "SAY", "SHE", "TOO", "USE", "WSB", "CEO", "IPO", "SEC",
+        "FDA", "USA", "ETF", "YOLO",
+    }
+
     def __init__(self):
         """
         Initializes the RedditService.
@@ -101,6 +111,19 @@ class RedditService:
             "squeeze",
         ]
 
+        # --- ⚡ Bolt Optimization: Pre-compiled Regex Patterns ---
+        # Pre-compiling regex patterns in __init__ avoids the overhead of
+        # re-compiling them on every function call.
+        self._ticker_re = re.compile(r"\b[A-Z]{2,5}\b")
+
+        # Pre-compiled regexes for specific keyword groups
+        self._crypto_re = re.compile(
+            "|".join(map(re.escape, self.crypto_keywords)), re.IGNORECASE
+        )
+        self._stock_re = re.compile(
+            "|".join(map(re.escape, self.stock_keywords)), re.IGNORECASE
+        )
+
     async def initialize(self) -> bool:
         """
         Initializes the Reddit API connection using PRAW.
@@ -132,6 +155,15 @@ class RedditService:
             logger.error(f"Failed to initialize Reddit service: {e}")
             return False
 
+    def _fetch_hot_posts(self, subreddit_name: str, limit: int) -> List[Any]:
+        """
+        Synchronous helper to fetch hot posts from a subreddit.
+        Combining these calls into a single function avoids multiple
+        run_in_executor overheads.
+        """
+        subreddit = self.reddit.subreddit(subreddit_name)
+        return list(subreddit.hot(limit=limit))
+
     async def get_trending_posts(
         self, subreddit_name: str, limit: int = 25
     ) -> List[Dict[str, Any]]:
@@ -148,11 +180,12 @@ class RedditService:
         if not self.initialized:
             raise ConnectionError("Reddit service is not initialized.")
         try:
-            subreddit = await asyncio.get_event_loop().run_in_executor(
-                None, self.reddit.subreddit, subreddit_name
-            )
+            # --- ⚡ Bolt Optimization: Consolidate run_in_executor calls ---
+            # Replaced two separate run_in_executor calls with a single call to
+            # a helper method. This reduces the number of tasks scheduled in the
+            # thread pool and minimizes thread context-switching overhead.
             hot_posts = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: list(subreddit.hot(limit=limit))
+                None, self._fetch_hot_posts, subreddit_name, limit
             )
 
             posts = [
@@ -200,9 +233,8 @@ class RedditService:
             all_posts = [post for result in results for post in result]
 
             # Filter for crypto-related posts
-            crypto_posts = self._filter_posts_by_keywords(
-                all_posts, self.crypto_keywords
-            )
+            # ⚡ Bolt Optimization: Use pre-compiled crypto regex
+            crypto_posts = self._filter_posts_by_regex(all_posts, self._crypto_re)
 
             # Analyze sentiment
             sentiment_data = self._analyze_post_sentiment(crypto_posts)
@@ -247,7 +279,8 @@ class RedditService:
             all_posts = [post for result in results for post in result]
 
             # Filter for stock-related posts
-            stock_posts = self._filter_posts_by_keywords(all_posts, self.stock_keywords)
+            # ⚡ Bolt Optimization: Use pre-compiled stock regex
+            stock_posts = self._filter_posts_by_regex(all_posts, self._stock_re)
 
             # Analyze sentiment
             sentiment_data = self._analyze_post_sentiment(stock_posts)
@@ -316,28 +349,28 @@ class RedditService:
                 "timestamp": datetime.now(),
             }
 
+    def _filter_posts_by_regex(
+        self, posts: List[Dict[str, Any]], regex: re.Pattern
+    ) -> List[Dict[str, Any]]:
+        """
+        Filters a list of posts based on a pre-compiled regex.
+        ⚡ Bolt Optimization: Uses regex.search() for efficient single-pass matching.
+        """
+        filtered_posts = []
+        for post in posts:
+            text = f"{post['title']} {post['selftext']}"
+            if regex.search(text):
+                filtered_posts.append(post)
+        return filtered_posts
+
     def _filter_posts_by_keywords(
         self, posts: List[Dict[str, Any]], keywords: List[str]
     ) -> List[Dict[str, Any]]:
         """
         Filters a list of posts based on a list of keywords.
-
-        Args:
-            posts (List[Dict[str, Any]]): The posts to filter.
-            keywords (List[str]): The keywords to search for in post titles and text.
-
-        Returns:
-            List[Dict[str, Any]]: A list of posts that contain any of the keywords.
         """
-        filtered_posts = []
-
-        for post in posts:
-            text = f"{post['title']} {post['selftext']}".lower()
-
-            if any(keyword in text for keyword in keywords):
-                filtered_posts.append(post)
-
-        return filtered_posts
+        keyword_re = re.compile("|".join(map(re.escape, keywords)), re.IGNORECASE)
+        return self._filter_posts_by_regex(posts, keyword_re)
 
     def _analyze_post_sentiment(self, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -390,63 +423,15 @@ class RedditService:
         Returns:
             Dict[str, int]: A dictionary mapping tickers to their mention frequency.
         """
-        ticker_pattern = r"\b[A-Z]{2,5}\b"
         ticker_counts: Dict[str, int] = {}
-
-        # Common words to exclude to reduce false positives
-        exclude_words = {
-            "THE",
-            "AND",
-            "FOR",
-            "ARE",
-            "BUT",
-            "NOT",
-            "YOU",
-            "ALL",
-            "CAN",
-            "HER",
-            "WAS",
-            "ONE",
-            "OUR",
-            "HAD",
-            "HAS",
-            "HAVE",
-            "HIS",
-            "HOW",
-            "ITS",
-            "MAY",
-            "NEW",
-            "NOW",
-            "OLD",
-            "SEE",
-            "TWO",
-            "WAY",
-            "WHO",
-            "BOY",
-            "DID",
-            "GET",
-            "HIM",
-            "OWN",
-            "SAY",
-            "SHE",
-            "TOO",
-            "USE",
-            "WSB",
-            "CEO",
-            "IPO",
-            "SEC",
-            "FDA",
-            "USA",
-            "ETF",
-            "YOLO",
-        }
 
         for post in posts:
             text = f"{post['title']} {post['selftext']}"
-            tickers = re.findall(ticker_pattern, text)
+            # Use pre-compiled regex for better performance
+            tickers = self._ticker_re.findall(text)
 
             for ticker in tickers:
-                if ticker not in exclude_words and len(ticker) <= 5:
+                if ticker not in self.EXCLUDE_WORDS:
                     ticker_counts[ticker] = ticker_counts.get(ticker, 0) + 1
 
         # Sort by frequency and return top 10
