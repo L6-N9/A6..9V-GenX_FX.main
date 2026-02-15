@@ -208,31 +208,20 @@ from unittest.mock import AsyncMock
 
 
 @pytest.mark.asyncio
-@patch("api.redis.redis_client", new_callable=AsyncMock)
-async def test_trading_pairs_caching(mock_redis_client):
+@patch("sqlite3.connect")
+async def test_trading_pairs_caching(mock_sqlite_connect):
     """
-    Test that the /trading-pairs endpoint correctly uses Redis caching.
+    Test that the /trading-pairs endpoint correctly uses in-memory caching.
     """
     # 1. Setup Mock
-    # Mock Redis client to simulate cache miss then cache hit
-    mock_redis_client.get.return_value = None
-
-    # Mock database dependency
     mock_db_cursor = MagicMock()
     mock_db_cursor.fetchall.return_value = [
         {"symbol": "EURUSD", "base_currency": "EUR", "quote_currency": "USD"}
     ]
 
     mock_db_conn = MagicMock()
+    mock_sqlite_connect.return_value = mock_db_conn
     mock_db_conn.cursor.return_value = mock_db_cursor
-
-    def override_get_db():
-        try:
-            yield mock_db_conn
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
 
     # 2. First Request (Cache Miss)
     response = client.get("/trading-pairs")
@@ -245,37 +234,17 @@ async def test_trading_pairs_caching(mock_redis_client):
         ]
     }
     assert response.json() == expected_data
+    # Expected call count: 1 from get_db + 1 from _get_all_trading_pairs_cached
+    assert mock_sqlite_connect.call_count == 2
 
-    # Verify DB was called
-    mock_db_conn.cursor.assert_called_once()
-    mock_db_cursor.execute.assert_called_once()
+    # Reset mock to verify subsequent calls
+    mock_sqlite_connect.reset_mock()
 
-    # Verify Redis cache was checked and then written to
-    mock_redis_client.get.assert_awaited_once_with("trading_pairs_cache")
-    mock_redis_client.setex.assert_awaited_once()
-
-    # 4. Setup for Second Request (Cache Hit)
-    # Reset mocks for call counts
-    mock_db_conn.cursor.reset_mock()
-    mock_redis_client.get.reset_mock()
-    mock_redis_client.setex.reset_mock()
-
-    # Configure redis_client.get to return the cached value now
-    mock_redis_client.get.return_value = json.dumps(expected_data)
-
-    # 5. Second Request (Cache Hit)
+    # 4. Second Request (Cache Hit)
     response = client.get("/trading-pairs")
 
-    # 6. Assertions for Second Request
+    # 5. Assertions for Second Request
     assert response.status_code == 200
     assert response.json() == expected_data
-
-    # Verify DB was NOT called
-    mock_db_conn.cursor.assert_not_called()
-
-    # Verify Redis cache was read from, but not written to again
-    mock_redis_client.get.assert_awaited_once_with("trading_pairs_cache")
-    mock_redis_client.setex.assert_not_awaited()
-
-    # 7. Cleanup
-    app.dependency_overrides.clear()
+    # Expected call count: 1 from get_db (dependency) but 0 from _get_all_trading_pairs_cached (hit cache)
+    assert mock_sqlite_connect.call_count == 1
